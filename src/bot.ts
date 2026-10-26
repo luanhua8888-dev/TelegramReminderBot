@@ -15,8 +15,22 @@ import {
   shopKeyboard,
 } from "./farm.ts";
 import { fetchMuStatus, formatMuMessage, isMuQuery, muKeyboard } from "./mu.ts";
+import {
+  fetchTopNews,
+  formatNewsMessage,
+  isNewsQuery,
+  newsKeyboard,
+  type NewsCategory,
+} from "./news.ts";
 import { checkSensitiveContent } from "./security.ts";
 import { transcribeAudio } from "./stt.ts";
+import {
+  fetchWeather,
+  formatWeatherMessage,
+  isWeatherQuery,
+  weatherKeyboard,
+  extractWeatherLocation,
+} from "./weather.ts";
 import {
   formatTask,
   formatTaskCard,
@@ -39,6 +53,8 @@ Cứ gõ tin nhắn bình thường, ví dụ:
 • <code>30p nữa uống thuốc</code>
 • <code>thứ 6 3h chiều nộp báo cáo</code>
 • <code>mỗi ngày 7h tập thể dục</code>
+• <code>thời tiết bình thạnh hôm nay như nào?</code>
+• <code>tin tức hôm nay</code>
 • <code>cuối tuần dọn nhà</code>${llmEnabled ? " (AI hiểu)" : ""}
 • <code>mua sữa</code> (không có giờ → ${config.autoSchedule ? "tự xếp vào khung trống" : "lưu vào inbox"})
 
@@ -48,6 +64,8 @@ Lệnh:
 /done 12 – đánh dấu xong #12 (hoặc /done #12)
 /move 12 mai 10h – dời giờ #12 (hoặc /move #12 mai 10h)
 /del 12 – xoá #12 (hoặc /del #12)
+/news – tin tức hot hôm nay (VnExpress)
+/tt [địa điểm] – dự báo thời tiết hôm nay
 /mu – tình trạng MU "Ra Hang" hay "Vô Hang"
 /farm – Nông trại vui vẻ (Trồng cây & Nuôi cá)
 /id – xem chat id
@@ -269,6 +287,42 @@ export function createBot(db: Db, tasks: TaskService) {
 
   bot.command(["farm", "nongtrai", "vuon"], handleFarm);
 
+  async function handleNews(ctx: Context, category: NewsCategory = "hot") {
+    void ctx.replyWithChatAction("typing").catch(() => {});
+    try {
+      const items = await fetchTopNews(category, 5);
+      return ctx.reply(formatNewsMessage(items, category), {
+        parse_mode: "HTML",
+        link_preview_options: { is_disabled: true },
+        reply_markup: newsKeyboard(category),
+      });
+    } catch (err) {
+      console.error("[news]", err);
+      return ctx.reply("📰 Chưa lấy được tin tức lúc này, bạn thử lại sau nhé!");
+    }
+  }
+
+  bot.command(["news", "tintuc", "tin"], (ctx) => handleNews(ctx, "hot"));
+
+  async function handleWeather(ctx: Context, locationQuery = "bình thạnh") {
+    void ctx.replyWithChatAction("typing").catch(() => {});
+    try {
+      const w = await fetchWeather(locationQuery);
+      return ctx.reply(formatWeatherMessage(w), {
+        parse_mode: "HTML",
+        reply_markup: weatherKeyboard(w.locationKey),
+      });
+    } catch (err) {
+      console.error("[weather]", err);
+      return ctx.reply("🌦 Chưa lấy được dữ liệu thời tiết lúc này, bạn thử lại sau nhé!");
+    }
+  }
+
+  bot.command(["tt", "thoitiet", "weather"], (ctx) => {
+    const loc = ctx.match.trim() || "bình thạnh";
+    return handleWeather(ctx, loc);
+  });
+
   // Tin nhắn thường = ghi note mới hoặc tương tác menu. Trong nhóm chỉ nhận /add
   bot.on("message:text", async (ctx) => {
     if (ctx.chat.type !== "private") return;
@@ -313,6 +367,16 @@ export function createBot(db: Db, tasks: TaskService) {
 
     if (text.toLowerCase() === "nông trại" || text.toLowerCase() === "nong trai" || text.toLowerCase() === "farm") {
       return handleFarm(ctx);
+    }
+
+    // Kiểm tra câu hỏi dự báo thời tiết
+    if (isWeatherQuery(text)) {
+      return handleWeather(ctx, extractWeatherLocation(text));
+    }
+
+    // Kiểm tra câu hỏi đọc tin tức hot hôm nay
+    if (isNewsQuery(text)) {
+      return handleNews(ctx, "hot");
     }
 
     // Kiểm tra nếu đang chờ nhập giờ mới để dời việc
@@ -624,6 +688,64 @@ export function createBot(db: Db, tasks: TaskService) {
         parse_mode: "HTML",
         reply_markup: farmDashboardKeyboard(),
       }).catch(() => {});
+    }
+  });
+
+  bot.callbackQuery(/^news:(hot|thoisu|kinhdoanh|congnghe|thethao)$/, async (ctx) => {
+    const category = ctx.match[1] as NewsCategory;
+    await ctx.answerCallbackQuery().catch(() => {});
+    try {
+      const items = await fetchTopNews(category, 5);
+      await ctx.editMessageText(formatNewsMessage(items, category), {
+        parse_mode: "HTML",
+        link_preview_options: { is_disabled: true },
+        reply_markup: newsKeyboard(category),
+      });
+    } catch {
+      await ctx.answerCallbackQuery({ text: "Chưa tải được tin mục này, thử lại sau nhé!" }).catch(() => {});
+    }
+  });
+
+  bot.callbackQuery(/^news:refresh:(hot|thoisu|kinhdoanh|congnghe|thethao)$/, async (ctx) => {
+    const category = ctx.match[1] as NewsCategory;
+    try {
+      const items = await fetchTopNews(category, 5);
+      await ctx.editMessageText(formatNewsMessage(items, category), {
+        parse_mode: "HTML",
+        link_preview_options: { is_disabled: true },
+        reply_markup: newsKeyboard(category),
+      });
+      await ctx.answerCallbackQuery({ text: "🔄 Đã cập nhật tin mới nhất!" }).catch(() => {});
+    } catch {
+      await ctx.answerCallbackQuery({ text: "Chưa làm mới được tin tức lúc này!" }).catch(() => {});
+    }
+  });
+
+  bot.callbackQuery(/^weather:refresh:(.+)$/, async (ctx) => {
+    const locKey = ctx.match[1];
+    try {
+      const w = await fetchWeather(locKey.replace(/_/g, " "));
+      await ctx.editMessageText(formatWeatherMessage(w), {
+        parse_mode: "HTML",
+        reply_markup: weatherKeyboard(w.locationKey),
+      });
+      await ctx.answerCallbackQuery({ text: "🔄 Đã cập nhật thời tiết mới nhất!" }).catch(() => {});
+    } catch {
+      await ctx.answerCallbackQuery({ text: "Chưa làm mới được thời tiết lúc này!" }).catch(() => {});
+    }
+  });
+
+  bot.callbackQuery(/^weather:loc:(.+)$/, async (ctx) => {
+    const locKey = ctx.match[1];
+    await ctx.answerCallbackQuery().catch(() => {});
+    try {
+      const w = await fetchWeather(locKey.replace(/_/g, " "));
+      await ctx.editMessageText(formatWeatherMessage(w), {
+        parse_mode: "HTML",
+        reply_markup: weatherKeyboard(w.locationKey),
+      });
+    } catch {
+      await ctx.answerCallbackQuery({ text: "Chưa lấy được thời tiết khu vực này!" }).catch(() => {});
     }
   });
 
