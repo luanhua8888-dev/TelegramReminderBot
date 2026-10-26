@@ -5,7 +5,7 @@
 
 import { config } from "./config.ts";
 import type { Parsed, Recurring } from "./parser.ts";
-import { DAY, parseLocalIso, startOfLocalDay, toLocal, toLocalIso, weekdayName } from "./time.ts";
+import { DAY, nextTet, parseLocalIso, startOfLocalDay, toLocal, toLocalIso, weekdayName } from "./time.ts";
 
 const SYSTEM_PROMPT = `Bạn tách ghi chú nhắc việc tiếng Việt thành JSON:
 {"text": string, "has_time": boolean, "due": "YYYY-MM-DD HH:mm" | null, "recurring": "daily" | "weekly" | "none"}
@@ -14,8 +14,14 @@ const SYSTEM_PROMPT = `Bạn tách ghi chú nhắc việc tiếng Việt thành 
 - "has_time": true CHỈ KHI ghi chú có nói thời điểm (ví dụ "cuối tuần", "đầu tháng sau", "tối mai", "sau Tết").
   Tên người như "chị Mai" không phải thời gian. Không nói thời điểm → false và "due": null.
 - "due": tra ngày trong BẢNG LỊCH, không tự tính. Không nói giờ thì dùng DEFAULT_HOUR:00.
-  "cuối tuần" = thứ 7 gần nhất. "đầu tháng sau" = ngày 1 tháng sau.
-- Chỉ trả về JSON.`;
+  "cuối tuần" = thứ 7 gần nhất. "đầu tháng sau" = ngày 1 tháng sau. "Tết" = Tết Nguyên Đán (TET_DATE).
+- Chỉ trả về JSON.
+
+Ví dụ (giả sử hôm nay 2026-03-10):
+"ngày 20 tháng sau trả tiền nhà" → {"text":"trả tiền nhà","has_time":true,"due":"2026-04-20 DEFAULT_HOUR:00","recurring":"none"}
+"sau Tết đi khám răng" → {"text":"đi khám răng","has_time":true,"due":"<ngày sau Tết> DEFAULT_HOUR:00","recurring":"none"}
+"mua sữa" → {"text":"mua sữa","has_time":false,"due":null,"recurring":"none"}
+"gọi chị Mai" → {"text":"gọi chị Mai","has_time":false,"due":null,"recurring":"none"}`;
 
 function calendar(now: number): string {
   const off = config.tzOffsetMin;
@@ -46,7 +52,13 @@ Ghi chú: ${input}`;
       model: config.llm.model,
       temperature: 0,
       messages: [
-        { role: "system", content: SYSTEM_PROMPT.replace("DEFAULT_HOUR", String(config.defaultHour).padStart(2, "0")) },
+        {
+          role: "system",
+          content: SYSTEM_PROMPT.replaceAll("DEFAULT_HOUR", String(config.defaultHour).padStart(2, "0")).replace(
+            "TET_DATE",
+            `mùng 1 Tết sắp tới: ${nextTet(now, off) ?? "không rõ"}`,
+          ),
+        },
         { role: "user", content: userMsg },
       ],
       response_format: { type: "json_object" },

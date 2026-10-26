@@ -69,8 +69,15 @@ export function createBot(db: Db, tasks: TaskService) {
     const chatId = ctx.chat!.id;
     const blocked = overLimit(chatId);
     if (blocked) return ctx.reply(blocked);
-    await ctx.replyWithChatAction("typing");
-    await replyAdded(ctx, await tasks.add(chatId, text, "telegram"));
+    // Telegram tắt "đang nhập..." sau ~5 giây; AI local có thể mất 10–20 giây nên gửi lại liên tục
+    const typing = () => ctx.replyWithChatAction("typing").catch(() => {});
+    void typing();
+    const keepTyping = setInterval(typing, 4500);
+    try {
+      await replyAdded(ctx, await tasks.add(chatId, text, "telegram"));
+    } finally {
+      clearInterval(keepTyping);
+    }
   }
 
   bot.command("add", async (ctx) => {

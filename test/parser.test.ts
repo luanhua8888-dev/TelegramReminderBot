@@ -45,6 +45,15 @@ const cases: [string, string, string | null, string | null][] = [
   ["3pm gọi đối tác", "gọi đối tác", "2026-10-26 15:00", null],
   ["mai 5am chạy bộ", "chạy bộ", "2026-10-27 05:00", null],
   ["nhớ vào lúc 9h họp", "họp", "2026-10-27 09:00", null],
+  ["tuần sau nữa nộp hồ sơ", "nộp hồ sơ", "2026-11-09 09:00", null],
+  ["thứ 6 tuần sau nữa họp", "họp", "2026-11-13 09:00", null],
+  ["ngày 15 tháng sau đóng học phí", "đóng học phí", "2026-11-15 09:00", null],
+  ["ngày 30 trả lương", "trả lương", "2026-10-30 09:00", null],
+  ["ngày 5 đóng tiền mạng", "đóng tiền mạng", "2026-11-05 09:00", null],
+  ["ngày 2 tháng 9 đi chơi", "đi chơi", "2027-09-02 09:00", null],
+  ["sau Tết đi khám răng", "đi khám răng", "2027-02-13 09:00", null],
+  ["mùng 3 Tết thăm thầy", "thăm thầy", "2027-02-08 09:00", null],
+  ["goi khach luc 3h chieu mai", "goi khach", "2026-10-27 15:00", null],
   ["mai 3h gọi anh Mai", "gọi anh Mai", "2026-10-27 15:00", null],
 ];
 

@@ -2,7 +2,7 @@
 // Hiểu được: "9h", "9h30", "15:30", "9h rưỡi", "3h chiều", "tối nay", "mai", "mốt", "thứ 2", "t6",
 // "chủ nhật", "25/12", "30p nữa", "sau 2 tiếng", "mỗi ngày", "hàng tuần", "tuần sau".
 
-import { DAY, HOUR, fromLocal, toLocal } from "./time.ts";
+import { DAY, HOUR, fromLocal, nextTet, toLocal } from "./time.ts";
 
 export type Recurring = "daily" | "weekly" | null;
 export type Parsed = { text: string; dueAt: number | null; recurring: Recurring };
@@ -19,7 +19,9 @@ const RE = {
   date: word("(?:ngày\\s*)?(\\d{1,2})[/-](\\d{1,2})(?:[/-](\\d{2,4}))?"),
   endOfWeek: word("cuối\\s*tuần(?:\\s*(này))?(?:\\s*(sau|tới))?"),
   monthEdge: word("(đầu|cuối)\\s*tháng(?:\\s*(này|sau|tới))?"),
-  nextWeek: word("(?:đầu\\s*)?(?:tuần\\s*(?:sau|tới|toi)|tuan\\s*(?:sau|toi))"),
+  dayOfMonth: word("ngày\\s*(\\d{1,2})(?:\\s*tháng\\s*(sau|tới|này|\\d{1,2}))?"),
+  tet: word("(?:(sau|ra|trước)\\s*)?tết|mùng\\s*(\\d{1,2})\\s*tết"),
+  nextWeek: word("(?:đầu\\s*)?(?:tuần\\s*(?:sau|tới|toi)|tuan\\s*(?:sau|toi))(?:\\s*(nữa|nua))?"),
   weekday: word("(?:thứ|thu)\\s*(2|3|4|5|6|7|hai|ba|tư|tu|bốn|năm|sáu|bảy|bay)|t([2-7])|(chủ\\s*nhật|chu\\s*nhat|cn)"),
   // "chị Mai", "anh Mai"... là tên người, không phải "ngày mai"
   dayWord: word(
@@ -61,7 +63,7 @@ class Cursor {
 
 function cleanText(s: string, fallback: string): string {
   let t = s
-    .replace(/(?<=^|\s)(?:vào\s+lúc|lúc|vào\s+ngày)(?=\s|$)/giu, " ")
+    .replace(/(?<=^|\s)(?:vào\s+lúc|vao\s+luc|lúc|luc|vào\s+ngày)(?=\s|$)/giu, " ")
     .replace(/\s+/g, " ")
     .trim()
     .replace(/^[,.;:\-–\s]+|[,;:\-–\s]+$/g, "")
@@ -131,10 +133,42 @@ export function parseVietnamese(input: string, opts: ParseOptions): Parsed {
     explicitYear = true;
   }
 
-  // "cuối tuần" = thứ 7; "cuối tuần sau" = thứ 7 tuần sau
+  // "ngày 15" (đã qua thì tháng sau), "ngày 15 tháng sau", "ngày 15 tháng 12"
+  const dom = hasDay ? null : c.take(RE.dayOfMonth);
+  if (dom) {
+    d = Number(dom[1]);
+    const monthWord = dom[2];
+    if (monthWord && /^\d/.test(monthWord)) {
+      mo = Number(monthWord); // năm: đã qua thì năm sau, xử lý ở dưới
+    } else {
+      if (monthWord === "sau" || monthWord === "tới" || (!monthWord && d < today.d)) mo += 1;
+      if (mo > 12) {
+        mo = 1;
+        y += 1;
+      }
+      explicitYear = true;
+    }
+    hasDay = true;
+  }
+
+  // "Tết" = mùng 1, "mùng 3 Tết", "sau/ra Tết" = mùng 8, "trước Tết" = 7 ngày trước mùng 1
+  const tet = hasDay ? null : c.take(RE.tet);
+  const tetDate = tet ? nextTet(now, off) : undefined;
+  if (tet && tetDate) {
+    const shift = tet[2] ? Number(tet[2]) - 1 : tet[1] === "trước" ? -7 : tet[1] ? 7 : 0;
+    const t = new Date(Date.UTC(+tetDate.slice(0, 4), +tetDate.slice(5, 7) - 1, +tetDate.slice(8, 10)) + shift * DAY);
+    y = t.getUTCFullYear();
+    mo = t.getUTCMonth() + 1;
+    d = t.getUTCDate();
+    hasDay = true;
+    explicitYear = true;
+  }
+
+  // "cuối tuần" = thứ 7; "cuối tuần sau" = thứ 7 tuần sau; "tuần sau nữa" = 2 tuần nữa
   const eow = c.take(RE.endOfWeek);
-  let nextWeek = Boolean(eow?.[2]);
-  nextWeek = Boolean(c.take(RE.nextWeek)) || nextWeek;
+  const nw = c.take(RE.nextWeek);
+  const weeksAhead = nw ? (nw[1] ? 2 : 1) : eow?.[2] ? 1 : 0;
+  const nextWeek = weeksAhead > 0;
 
   const wd = eow ? null : c.take(RE.weekday);
   if (eow) weekday = 6;
@@ -190,7 +224,7 @@ export function parseVietnamese(input: string, opts: ParseOptions): Parsed {
     // "tuần sau" → thứ 2 tuần sau; "thứ 6 tuần sau" → thứ 6 của tuần sau (tuần bắt đầu từ thứ 2)
     const toMonday = (1 - today.dow + 7) % 7 || 7;
     const fromMonday = weekday === null ? 0 : (weekday + 6) % 7;
-    due = fromLocal(y, mo, d, h, minute, off) + (toMonday + fromMonday) * DAY;
+    due = fromLocal(y, mo, d, h, minute, off) + (toMonday + 7 * (weeksAhead - 1) + fromMonday) * DAY;
   }
 
   return { text: cleanText(c.orig, input), dueAt: due, recurring };

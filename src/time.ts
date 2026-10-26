@@ -54,6 +54,15 @@ export function parseLocalIso(s: string, offsetMin: number): number | null {
   return fromLocal(y, mo, d, h, mi, offsetMin);
 }
 
+// Mùng 1 Tết Nguyên Đán (âm lịch, không tính bằng code đơn giản được nên ghi sẵn). Hết bảng thì bổ sung.
+export const TET_DATES = ["2027-02-06", "2028-01-26", "2029-02-13", "2030-02-03", "2031-01-23", "2032-02-11"];
+
+/** Mùng 1 Tết sắp tới (tính cả hôm nay), dạng YYYY-MM-DD. */
+export function nextTet(epoch: number, offsetMin: number): string | undefined {
+  const today = toLocalIso(epoch, offsetMin).slice(0, 10);
+  return TET_DATES.find((d) => d >= today);
+}
+
 export function weekdayName(dow: number): string {
   return ["Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"][dow];
 }
