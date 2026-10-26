@@ -138,6 +138,11 @@ export function parseMuData(scheduleJson: any, teamJson: any): MuStatusResult {
 
 let cachedStatus: { data: MuStatusResult; timestamp: number } | null = null;
 
+const BROWSER_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+  Accept: "application/json",
+};
+
 /** Lấy thông tin MU mới nhất từ ESPN (có cache 5 phút để tránh spam API) */
 export async function fetchMuStatus(forceRefresh = false): Promise<MuStatusResult> {
   const now = Date.now();
@@ -147,8 +152,8 @@ export async function fetchMuStatus(forceRefresh = false): Promise<MuStatusResul
 
   try {
     const [schedRes, teamRes] = await Promise.all([
-      fetch(SCHEDULE_URL, { headers: { "User-Agent": "TelegramReminderBot" } }),
-      fetch(TEAM_URL, { headers: { "User-Agent": "TelegramReminderBot" } }),
+      fetch(SCHEDULE_URL, { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(10_000) }),
+      fetch(TEAM_URL, { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(10_000) }),
     ]);
 
     if (!schedRes.ok) throw new Error(`ESPN schedule status ${schedRes.status}`);
@@ -159,6 +164,7 @@ export async function fetchMuStatus(forceRefresh = false): Promise<MuStatusResul
     cachedStatus = { data: result, timestamp: now };
     return result;
   } catch (err) {
+    console.warn("[mu] fetch error:", (err as Error).message);
     if (cachedStatus) return cachedStatus.data;
     throw err;
   }
