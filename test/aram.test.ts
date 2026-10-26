@@ -7,6 +7,8 @@ import {
   isAramQuery,
   extractChampionFromQuery,
   aramKeyboard,
+  parseAramQuery,
+  findBuildIndex,
   type AramChampionData,
 } from "../src/aram.ts";
 
@@ -116,3 +118,25 @@ test("aramKeyboard tạo nút link web và các nút tướng nhanh", () => {
   assert.ok(flat.some((b) => "url" in b && b.url.includes("playaram.gg/tuong/yasuo")));
   assert.ok(flat.some((b) => "callback_data" in b && b.callback_data === "aram:yone"));
 });
+
+test("parseAramQuery phân tích chính xác tên tướng và phong cách build", () => {
+  assert.deepEqual(parseAramQuery("/aram maokai ap"), { champion: "maokai", preference: "ap" });
+  assert.deepEqual(parseAramQuery("maokai ap"), { champion: "maokai", preference: "ap" });
+  assert.deepEqual(parseAramQuery("hướng ap maokai"), { champion: "maokai", preference: "ap" });
+  assert.deepEqual(parseAramQuery("/aram yasuo"), { champion: "yasuo", preference: undefined });
+  assert.deepEqual(parseAramQuery("maokai tank"), { champion: "maokai", preference: "tank" });
+});
+
+test("findBuildIndex tìm chính xác build theo sở thích", () => {
+  const builds = [
+    { name: "Đỡ đòn · Băng Giáp Vĩnh Cửu", items: [] },
+    { name: "Đốt phép · Đuốc Lửa Đen", items: [] },
+    { name: "Sát thương · Tam Hợp Kiếm", items: [] },
+  ];
+
+  assert.equal(findBuildIndex(builds, "ap"), 1);
+  assert.equal(findBuildIndex(builds, "tank"), 0);
+  assert.equal(findBuildIndex(builds, "ad"), 2);
+  assert.equal(findBuildIndex(builds, undefined), 0);
+});
+

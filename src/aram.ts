@@ -87,8 +87,8 @@ export const ITEM_VISUAL_MAP: Record<string, { en: string; nick: string; visual:
 };
 
 export const AUGMENT_VISUAL_MAP: Record<string, string> = {
-  "cu dam than bi": "👊 Nắm đấm xanh ngọc phát sáng (Đòn đánh/Q giảm hồi chiêu)",
-  "khong nhan can dam": "🛡️ Khiên xanh lá chiến binh (Hất tung tạo giáp)",
+  "cu dam than bi": "👊 Nắm đấm xanh ngọc phát sáng",
+  "khong nhan can dam": "🛡️ Khiên xanh lá chiến binh",
   "bac hoc dien": "🧪 Bình thuốc độc xanh lá",
   "not tram bung no": "💥 Biểu tượng nốt nhạc nổ tung",
   "va cham thiet giap": "🛡️ Giáp sắt nặng có tia sét",
@@ -96,6 +96,9 @@ export const AUGMENT_VISUAL_MAP: Record<string, string> = {
   "chien hoac chuon": "🏃 Đôi cánh / người chạy nhanh",
   "hoc thuat lam he": "🎭 Mặt nạ hề phân thân",
   "diet khong lo": "🗡️ Kiếm đâm bàn tay khổng lồ",
+  "de quy vo han": "🔄 Biểu tượng vô cực xoay vòng",
+  "y chi than su": "🪽 Đôi cánh thiên thần ánh sáng",
+  "xoi mon": "💧 Giọt nước ăn mòn kháng phép",
 };
 
 const COMMON_CHAMPION_MAP: Record<string, string> = {
@@ -275,7 +278,7 @@ export function parsePlayAramHtml(html: string, slug: string): AramChampionData 
     const wrMatch = pContent.match(/class="sp-stat bt-kpi bt-kpi--wr">([\s\S]*?)<\/span>/i);
     const pickMatch = pContent.match(/class="sp-stat bt-kpi">([\s\S]*?)<\/span>/i);
 
-    // Bóc tách cả ảnh và tên món (hỗ trợ cả khi có hoặc không có thẻ img)
+    // Bóc tách toàn bộ 6 items (bao gồm cả giày của build đó, chỉ loại bỏ phép bổ trợ)
     const slotMatches = [...pContent.matchAll(/<li[^>]*>(?:[\s\S]*?<img[^>]*src="([^"]*)")?[\s\S]*?<span class="bt-slot__name">([\s\S]*?)<\/span>/g)];
 
     const items: BuildItem[] = [];
@@ -283,14 +286,14 @@ export function parsePlayAramHtml(html: string, slug: string): AramChampionData 
       const rawImg = sm[1];
       const sName = sm[2].trim();
 
-      if (sName.startsWith("Giày ")) {
-        if (!panelBoots.some((b) => b.name === sName)) {
-          panelBoots.push(resolveItemMeta(sName, rawImg));
-        }
-      } else if (SUMMONER_SPELLS.has(sName)) {
+      if (SUMMONER_SPELLS.has(sName)) {
         if (!panelSpells.includes(sName)) panelSpells.push(sName);
       } else {
-        items.push(resolveItemMeta(sName, rawImg));
+        const metaItem = resolveItemMeta(sName, rawImg);
+        items.push(metaItem);
+        if (sName.startsWith("Giày ") && !panelBoots.some((b) => b.name === sName)) {
+          panelBoots.push(metaItem);
+        }
       }
     }
 
@@ -422,34 +425,17 @@ export async function generateBuildBanner(itemUrls: string[]): Promise<Buffer | 
   }
 }
 
-/** Định dạng nội dung tóm tắt hiển thị kèm ẢNH trong Telegram (dưới 1024 ký tự) */
+/** Định dạng nội dung tối giản hiển thị kèm ẢNH (không liệt kê tên dài dòng theo yêu cầu người dùng) */
 export function formatAramCaption(d: AramChampionData, activeBuildIdx = 0): string {
   const b = d.builds[activeBuildIdx] || d.builds[0];
   const lines: string[] = [
-    `⚔️ <b>ARAM HỖN LOẠN – ${escapeHtml(d.championName.toUpperCase())}</b> · <b>${escapeHtml(b ? b.name : "Tiêu Chuẩn")}</b>`,
-    `<i>Dữ liệu meta PlayARAM.gg${b?.winRate ? ` · Thắng: ${b.winRate}` : ""}</i>`,
+    `⚔️ <b>ARAM HỖN LOẠN – ${escapeHtml(d.championName.toUpperCase())}</b>`,
+    `📌 <b>${escapeHtml(b ? b.name : "Tiêu Chuẩn")}</b>${b?.winRate ? ` <i>(Thắng: ${b.winRate})</i>` : ""}`,
     "",
   ];
 
-  if (b && b.items.length > 0) {
-    lines.push("🛡 <b>CÁC MÓN TRONG HÌNH (TRÁI QUA PHẢI):</b>");
-    b.items.forEach((item, idx) => {
-      const tag = item.nick || item.enName ? ` [<i>${escapeHtml(item.nick || item.enName!)}</i>]` : "";
-      lines.push(`${idx + 1}. <b>${escapeHtml(item.name)}</b>${tag}`);
-    });
-    lines.push("");
-  }
-
-  // Giày & Phép
-  if (d.boots && d.boots.length > 0) {
-    lines.push(`👢 <b>Giày:</b> ${d.boots.map((boot) => `<b>${escapeHtml(boot.name)}</b>`).join(" / ")}`);
-  }
-  if (d.spells && d.spells.length > 0) {
-    lines.push(`⚡ <b>Phép:</b> ${d.spells.map((s) => `<b>${escapeHtml(s)}</b>`).join(" | ")}`);
-  }
-
-  lines.push("");
-  lines.push("🌟 <b>LÕI NÂNG CẤP KHUYÊN DÙNG:</b>");
+  // Lõi tối ưu ngắn gọn
+  lines.push("🌟 <b>Lõi khuyên dùng:</b>");
   if (d.prismaticAugments[0]) {
     lines.push(`💎 Lõi Kim Cương: <b>${escapeHtml(d.prismaticAugments[0].name)}</b> <i>(${d.prismaticAugments[0].winRate})</i>`);
   }
@@ -460,12 +446,20 @@ export function formatAramCaption(d: AramChampionData, activeBuildIdx = 0): stri
     lines.push(`🥈 Lõi Bạc: <b>${escapeHtml(d.silverAugments[0].name)}</b> <i>(${d.silverAugments[0].winRate})</i>`);
   }
 
+  if (d.spells && d.spells.length > 0) {
+    lines.push(`⚡ <b>Phép:</b> ${d.spells.map((s) => `<b>${escapeHtml(s)}</b>`).join(" | ")}`);
+  }
+
   if (d.combos.length > 0) {
     lines.push("");
     const combo = d.combos[0];
     const shortDesc = combo.desc.length > 150 ? `${combo.desc.slice(0, 147)}...` : combo.desc;
     lines.push(`<blockquote><b>${escapeHtml(combo.title)}</b>\n<i>${escapeHtml(shortDesc)}</i></blockquote>`);
   }
+
+  lines.push("");
+  lines.push("💡 <i>Nhìn dải ảnh trên để lên đúng 6 món; bấm các nút dưới để đổi hướng build khác</i>");
+  lines.push("🌐 <i>Nguồn: PlayARAM.gg</i>");
 
   return lines.join("\n");
 }
@@ -487,7 +481,14 @@ export function aramKeyboard(
   if (builds.length > 1) {
     builds.slice(0, 3).forEach((b, idx) => {
       const shortName = b.name.split("·")[0]?.trim() || b.name.slice(0, 12);
-      const label = idx === activeBuildIdx ? `• ⚔️ ${shortName} •` : shortName;
+      let emoji = "⚔️";
+      const lower = b.name.toLowerCase();
+      if (lower.includes("đỡ đòn") || lower.includes("tank") || lower.includes("băng giáp")) emoji = "🛡️";
+      else if (lower.includes("phép") || lower.includes("đuốc") || lower.includes("đốt")) emoji = "🔥";
+      else if (lower.includes("chí mạng")) emoji = "🎯";
+      else if (lower.includes("sát lực")) emoji = "🗡️";
+
+      const label = idx === activeBuildIdx ? `• ${emoji} ${shortName} •` : `${emoji} ${shortName}`;
       kb.text(label, `aram:build:${currentSlug}:${idx}`);
     });
     kb.row();
@@ -504,6 +505,59 @@ export function aramKeyboard(
     .url("🌐 Mở chi tiết trên PlayARAM.gg", `https://playaram.gg/tuong/${currentSlug}`);
 
   return kb;
+}
+
+/** Phân tích câu truy vấn để tách riêng tên tướng và hướng build mong muốn (AP, Tank, AD...) */
+export function parseAramQuery(input: string): { champion: string; preference?: string } {
+  let cleaned = input.trim();
+  cleaned = cleaned.replace(/^\/aram\s*/i, "").trim();
+
+  let preference: string | undefined = undefined;
+  const lower = cleaned.toLowerCase();
+
+  if (/\b(?:ap|phep|phép)\b/i.test(lower)) {
+    preference = "ap";
+  } else if (/\b(?:tank|do\s*don|đỡ\s*đòn|giap|giáp)\b/i.test(lower)) {
+    preference = "tank";
+  } else if (/\b(?:ad|sat\s*thuong|dame|stvl)\b/i.test(lower)) {
+    preference = "ad";
+  } else if (/\b(?:crit|chi\s*mang|chí\s*mạng)\b/i.test(lower)) {
+    preference = "crit";
+  } else if (/\b(?:sat\s*luc|sát\s*lực|lethality)\b/i.test(lower)) {
+    preference = "lethality";
+  }
+
+  // Tách tên tướng (bỏ các từ khóa preference ra khỏi input)
+  const champRaw = cleaned
+    .replace(/\b(?:ap|phep|phép|tank|do\s*don|đỡ\s*đòn|ad|crit|chi\s*mang|chí\s*mạng|sat\s*luc|sát\s*lực|lethality)\b/gi, " ")
+    .replace(/https?:\/\/[^\s]+/gi, " ")
+    .replace(/aram\s*hỗn\s*loạn|aram\s*hon\s*loan|aram/gi, " ")
+    .replace(/hướng|huong|danh|đánh|len\s*do|lên\s*đồ|build/gi, " ")
+    .replace(/[?!.,;:~\\\/]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const champion = extractChampionFromQuery(champRaw);
+
+  return { champion, preference };
+}
+
+/** Tìm vị trí hướng build phù hợp với sở thích của người dùng */
+export function findBuildIndex(builds: BuildInfo[], preference?: string): number {
+  if (!preference || builds.length === 0) return 0;
+
+  const pref = preference.toLowerCase();
+  const idx = builds.findIndex((b) => {
+    const name = b.name.toLowerCase();
+    if (pref === "ap") return name.includes("phép") || name.includes("đuốc") || name.includes("đốt") || name.includes("ap");
+    if (pref === "tank") return name.includes("đỡ đòn") || name.includes("giáp") || name.includes("áo choàng") || name.includes("tank");
+    if (pref === "crit") return name.includes("chí mạng") || name.includes("vô cực") || name.includes("crit");
+    if (pref === "lethality") return name.includes("sát lực") || name.includes("kiếm ma") || name.includes("nguyệt đao");
+    if (pref === "ad") return name.includes("sát thương") || name.includes("tốc đánh") || name.includes("đòn đánh") || name.includes("đấu sĩ");
+    return false;
+  });
+
+  return idx !== -1 ? idx : 0;
 }
 
 /** Nhận diện câu hỏi liên quan đến ARAM Mayhem / Lõi nâng cấp */

@@ -28,7 +28,8 @@ import {
   generateBuildBanner,
   isAramQuery,
   aramKeyboard,
-  extractChampionFromQuery,
+  parseAramQuery,
+  findBuildIndex,
 } from "./aram.ts";
 import { checkSensitiveContent } from "./security.ts";
 import { transcribeAudio } from "./stt.ts";
@@ -333,21 +334,14 @@ export function createBot(db: Db, tasks: TaskService) {
     return handleWeather(ctx, loc);
   });
 
-  async function handleAram(ctx: Context, championQuery = "yasuo", buildIdx = 0) {
+  async function handleAram(ctx: Context, rawQuery = "yasuo", explicitBuildIdx?: number) {
     void ctx.replyWithChatAction("upload_photo").catch(() => {});
+    const { champion, preference } = parseAramQuery(rawQuery);
     try {
-      const data = await fetchAramChampion(championQuery);
+      const data = await fetchAramChampion(champion);
 
-      // Tự động nhận diện hướng build theo từ khóa nếu có (ví dụ "maokai ap" -> chọn build phép)
-      let activeIdx = buildIdx;
-      const lowerQuery = championQuery.toLowerCase();
-      if (lowerQuery.includes("ap") || lowerQuery.includes("phep") || lowerQuery.includes("phép")) {
-        const found = data.builds.findIndex((b) => b.name.toLowerCase().includes("phép") || b.name.toLowerCase().includes("đuốc") || b.name.toLowerCase().includes("đốt"));
-        if (found !== -1) activeIdx = found;
-      } else if (lowerQuery.includes("tank") || lowerQuery.includes("do don") || lowerQuery.includes("đỡ đòn")) {
-        const found = data.builds.findIndex((b) => b.name.toLowerCase().includes("đỡ đòn") || b.name.toLowerCase().includes("giáp") || b.name.toLowerCase().includes("tank"));
-        if (found !== -1) activeIdx = found;
-      }
+      let activeIdx = explicitBuildIdx !== undefined ? explicitBuildIdx : findBuildIndex(data.builds, preference);
+      if (activeIdx < 0 || activeIdx >= data.builds.length) activeIdx = 0;
 
       const activeBuild = data.builds[activeIdx] || data.builds[0];
       const itemUrls = (activeBuild?.items || []).map((i) => i.imgUrl).filter(Boolean) as string[];
@@ -370,7 +364,7 @@ export function createBot(db: Db, tasks: TaskService) {
     } catch (err) {
       console.error("[aram]", err);
       return ctx.reply(
-        `⚔️ Không tìm thấy dữ liệu cho tướng "<b>${escapeHtml(championQuery)}</b>" trên PlayARAM.gg.\n\nBạn thử gõ: <code>/aram yasuo</code>, <code>/aram maokai</code>, <code>/aram yone</code>, <code>/aram leesin</code>, <code>/aram samira</code>, <code>/aram yi</code>...`,
+        `⚔️ Không tìm thấy dữ liệu cho tướng "<b>${escapeHtml(champion || rawQuery)}</b>" trên PlayARAM.gg.\n\nBạn thử gõ: <code>/aram yasuo</code>, <code>/aram maokai</code>, <code>/aram yone</code>, <code>/aram leesin</code>, <code>/aram samira</code>, <code>/aram yi</code>...`,
         {
           parse_mode: "HTML",
           reply_markup: aramKeyboard("yasuo"),
@@ -442,7 +436,7 @@ export function createBot(db: Db, tasks: TaskService) {
 
     // Kiểm tra câu hỏi tra cứu ARAM Hỗn Loạn / Lõi nâng cấp PlayARAM.gg
     if (isAramQuery(text)) {
-      return handleAram(ctx, extractChampionFromQuery(text));
+      return handleAram(ctx, text);
     }
 
     // Kiểm tra nếu đang chờ nhập giờ mới để dời việc
