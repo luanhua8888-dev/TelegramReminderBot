@@ -111,6 +111,27 @@ export function formatTask(t: Task): string {
   return parts.join(" · ");
 }
 
+/** Vẽ thanh tiến độ trực quan, ví dụ [▓▓▓▓░░░░░░] 40% */
+export function renderProgressBar(done: number, total: number, size = 10): string {
+  if (total <= 0) return `[${"░".repeat(size)}] 0%`;
+  const ratio = Math.max(0, Math.min(1, done / total));
+  const filled = Math.round(ratio * size);
+  const empty = Math.max(0, size - filled);
+  const percent = Math.round(ratio * 100);
+  return `[${"▓".repeat(filled)}${"░".repeat(empty)}] ${percent}%`;
+}
+
+/** Định dạng task dạng Card UI đẹp mắt với HTML blockquote */
+export function formatTaskCard(t: Task, index?: number): string {
+  const prefix = index != null ? `<b>${index}.</b> ` : "";
+  const timeStr = t.due_at !== null ? `⏰ <code>${when(t.due_at)}</code>` : "📥 <i>(chưa có giờ)</i>";
+  const badges: string[] = [timeStr];
+  if (t.recurring) badges.push(RECUR_LABEL[t.recurring]);
+  if (t.source !== "telegram") badges.push(`📥 ${t.source}`);
+
+  return `${prefix}<b>#${t.id}</b> · ${badges.join(" · ")}\n<blockquote>${escapeHtml(t.text)}</blockquote>`;
+}
+
 export function taskKeyboard(id: number): InlineKeyboard {
   return new InlineKeyboard().text("✅ Xong", `done:${id}`).text("📅 Mai", `tmr:${id}`).text("🗑 Xoá", `del:${id}`);
 }

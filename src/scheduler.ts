@@ -1,7 +1,7 @@
 import type { Api } from "grammy";
 import { config } from "./config.ts";
 import type { Db } from "./db.ts";
-import { escapeHtml, formatTask, reminderKeyboard } from "./tasks.ts";
+import { escapeHtml, formatTaskCard, reminderKeyboard } from "./tasks.ts";
 import { DAY, startOfLocalDay, toLocal, toLocalIso } from "./time.ts";
 
 const TICK_MS = 30_000;
@@ -27,10 +27,10 @@ export function startScheduler(db: Db, api: Api): () => void {
     for (const task of db.tasksToRemind(now)) {
       const isRepeat = task.remind_count > 0;
       const last = task.remind_count + 1 >= config.maxRepeats;
-      const header = isRepeat ? `🔔 Nhắc lại (lần ${task.remind_count + 1})` : "🔔 Đến giờ rồi";
-      const footer = last ? "\n<i>Đây là lần nhắc cuối, bấm 📅 để dời nếu chưa làm.</i>" : "";
+      const header = isRepeat ? `🔔 <b>Nhắc lại (lần ${task.remind_count + 1})</b>` : "🔔 <b>Đến giờ rồi!</b>";
+      const footer = last ? "\n<i>⚠️ Đây là lần nhắc cuối, bấm 📅 để dời nếu chưa làm.</i>" : "";
       try {
-        await api.sendMessage(task.chat_id, `${header}\n\n<b>${escapeHtml(task.text)}</b>${footer}`, {
+        await api.sendMessage(task.chat_id, `${header}\n\n<blockquote>${escapeHtml(task.text)}</blockquote>${footer}`, {
           parse_mode: "HTML",
           reply_markup: reminderKeyboard(task.id),
         });
@@ -57,10 +57,16 @@ export function startScheduler(db: Db, api: Api): () => void {
       const todayTasks = pending.filter((t) => t.due_at !== null && t.due_at < endOfDay);
       const inbox = pending.filter((t) => t.due_at === null);
       if (!todayTasks.length && !inbox.length) continue;
-      const lines = ["☀️ <b>Việc hôm nay</b>"];
-      lines.push(...(todayTasks.length ? todayTasks.map(formatTask) : ["(không có)"]));
-      if (inbox.length) lines.push("", "📥 <b>Inbox chưa có giờ</b>", ...inbox.map(formatTask));
-      await api.sendMessage(chatId, lines.join("\n"), { parse_mode: "HTML" }).catch((err) => {
+      const lines = ["☀️ <b>Kế hoạch hôm nay</b>"];
+      if (todayTasks.length) {
+        lines.push(...todayTasks.map((t, idx) => formatTaskCard(t, idx + 1)));
+      } else {
+        lines.push("<i>(Không có việc nào có giờ hôm nay)</i>");
+      }
+      if (inbox.length) {
+        lines.push("", "📥 <b>Hộp thư Inbox (chưa xếp giờ)</b>", ...inbox.map((t, idx) => formatTaskCard(t, idx + 1)));
+      }
+      await api.sendMessage(chatId, lines.join("\n\n"), { parse_mode: "HTML" }).catch((err) => {
         console.error("[digest]", (err as Error).message);
       });
     }

@@ -5,7 +5,7 @@ process.env.TELEGRAM_BOT_TOKEN ??= "test";
 process.env.LLM_MODEL = ""; // luôn dùng parser luật trong test
 process.env.AUTO_SCHEDULE = "0"; // tự xếp lịch được test riêng trong slot.test.ts
 const { openDb } = await import("../src/db.ts");
-const { createTaskService } = await import("../src/tasks.ts");
+const { createTaskService, renderProgressBar, formatTaskCard } = await import("../src/tasks.ts");
 const { DAY } = await import("../src/time.ts");
 
 const CHAT = 1;
@@ -57,4 +57,28 @@ test("snooze và chat khác không đụng được việc của nhau", async ()
   assert.equal(tasks.complete(task.id, 999), null);
   const at = tasks.snooze(task.id, CHAT, 60_000)!;
   assert.equal(db.getTask(task.id, CHAT)!.next_remind_at, at);
+});
+
+test("renderProgressBar hiển thị đúng tỷ lệ", () => {
+  assert.equal(renderProgressBar(0, 0), "[░░░░░░░░░░] 0%");
+  assert.equal(renderProgressBar(5, 10, 10), "[▓▓▓▓▓░░░░░] 50%");
+  assert.equal(renderProgressBar(10, 10, 10), "[▓▓▓▓▓▓▓▓▓▓] 100%");
+});
+
+test("formatTaskCard định dạng HTML blockquote và emoji", () => {
+  const task = {
+    id: 1,
+    chat_id: 123,
+    text: "Mua sữa tươi",
+    due_at: 1774843200000,
+    next_remind_at: 1774843200000,
+    remind_count: 0,
+    recurring: null,
+    status: "pending" as const,
+    source: "telegram",
+    created_at: 1774800000000,
+  };
+  const card = formatTaskCard(task);
+  assert.match(card, /<b>#1<\/b>/);
+  assert.match(card, /<blockquote>Mua sữa tươi<\/blockquote>/);
 });
