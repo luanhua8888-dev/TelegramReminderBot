@@ -71,6 +71,18 @@ export const ITEM_VISUAL_MAP: Record<string, { en: string; nick: string; visual:
   "gang tay bang gia": { en: "Iceborn Gauntlet", nick: "Găng Băng", visual: "Găng tay băng xanh" },
   "dong ho cat zhonya": { en: "Zhonya's Hourglass", nick: "Đồng Hồ Cát", visual: "Đồng hồ cát vàng" },
   "mu phu thuy rabadon": { en: "Rabadon's Deathcap", nick: "Mũ Phù Thủy", visual: "Mũ chóp nhọn đỏ tím" },
+  "duoc lua den": { en: "Blackfire Torch", nick: "Đuốc Lửa Đen", visual: "Đuốc đen lửa tím" },
+  "mat na doa day liandry": { en: "Liandry's Torment", nick: "Mặt Nạ Liandry", visual: "Mặt nạ khóc chảy nước mắt" },
+  "hoa khuan": { en: "Malignance", nick: "Hỏa Khuẩn", visual: "Viên ngọc tròn tím có gai" },
+  "ngon lua hac hoa": { en: "Shadowflame", nick: "Ngọn Lửa Hắc Hóa", visual: "Mũi tên lửa xám tím" },
+  "giay phap su": { en: "Sorcerer's Shoes", nick: "Giày Pháp Sư", visual: "Giày vải màu tím lam" },
+  "truong hu vo": { en: "Void Staff", nick: "Trượng Hư Vô", visual: "Gậy tím pha lê" },
+  "kinh hoa lupen": { en: "Luden's Companion", nick: "Vọng Âm Luden", visual: "Gậy ma thuật phát nổ" },
+  "trai tim khong than": { en: "Heartsteel", nick: "Trái Tim Khổng Thần", visual: "Trái tim thép xám đỏ" },
+  "bang giap vinh cuu": { en: "Fimbulwinter", nick: "Băng Giáp", visual: "Giáp ngực băng xanh" },
+  "giap gai": { en: "Thornmail", nick: "Giáp Gai", visual: "Áo giáp gai nhọn" },
+  "ao choang diet vong": { en: "Sunfire Aegis", nick: "Áo Choàng Lửa", visual: "Áo choàng đỏ bốc lửa" },
+  "giap mau warmog": { en: "Warmog's Armor", nick: "Giáp Máu Warmog", visual: "Giáp xanh ngọc dày" },
 };
 
 export const AUGMENT_VISUAL_MAP: Record<string, string> = {
@@ -409,27 +421,22 @@ export function formatAramMessage(d: AramChampionData): string {
     lines.push("");
     lines.push("🛡 <b>BUILD TRANG BỊ ĐỀ XUẤT (KÈM NHẬN DIỆN ITEM):</b>");
     lines.push("<i>(Bấm vào tên từng món để xem ảnh icon; chữ nghiêng là tên gõ tắt tìm trong shop in-game)</i>");
-    const b = d.builds[0];
-    const wrBadge = b.winRate ? ` <i>(Tỉ lệ thắng: ${b.winRate})</i>` : "";
-    lines.push(`\n<b>${escapeHtml(b.name)}</b>${wrBadge}`);
 
-    if (b.items.length >= 2) {
-      lines.push("<b>Trang bị cốt lõi (Bắt buộc):</b>");
-      lines.push(formatItemLine(b.items[0], "1. "));
-      lines.push(formatItemLine(b.items[1], "2. "));
+    d.builds.slice(0, 2).forEach((b, bIdx) => {
+      const wrBadge = b.winRate ? ` <i>(Tỉ lệ thắng: ${b.winRate})</i>` : "";
+      const headerTitle = d.builds.length > 1 ? `\n📌 <b>Hướng ${bIdx + 1}: ${escapeHtml(b.name)}</b>${wrBadge}` : `\n<b>${escapeHtml(b.name)}</b>${wrBadge}`;
+      lines.push(headerTitle);
 
-      const rest = b.items.slice(2);
-      if (rest.length > 0) {
-        lines.push("<b>Các món tiếp theo:</b>");
-        rest.forEach((item, idx) => {
-          lines.push(formatItemLine(item, `${idx + 3}. `));
-        });
+      if (b.items.length >= 2) {
+        lines.push("• <b>Cốt lõi:</b> " + formatItemLine(b.items[0], "") + " + " + formatItemLine(b.items[1], ""));
+        const rest = b.items.slice(2);
+        if (rest.length > 0) {
+          lines.push("• <b>Món tiếp theo:</b> " + rest.map((item) => formatItemLine(item, "")).join(" · "));
+        }
+      } else if (b.items.length > 0) {
+        lines.push("• <b>Trang bị:</b> " + b.items.map((item) => formatItemLine(item, "")).join(" · "));
       }
-    } else if (b.items.length > 0) {
-      b.items.forEach((item, idx) => {
-        lines.push(formatItemLine(item, `${idx + 1}. `));
-      });
-    }
+    });
   }
 
   // Giày & Phép bổ trợ
