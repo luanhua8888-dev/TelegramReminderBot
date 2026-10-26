@@ -15,6 +15,7 @@ export type Task = {
   status: TaskStatus;
   source: string;
   created_at: number;
+  last_msg_id?: number | null;
 };
 
 // Người dùng ngoài host: xin quyền → host duyệt hoặc từ chối
@@ -49,6 +50,12 @@ export function openDb(path: string) {
     );
   `);
 
+  try {
+    db.exec("ALTER TABLE tasks ADD COLUMN last_msg_id INTEGER");
+  } catch {
+    // Column already exists
+  }
+
   const q = {
     insert: db.prepare(
       `INSERT INTO tasks (chat_id, text, due_at, next_remind_at, recurring, source, created_at)
@@ -64,6 +71,7 @@ export function openDb(path: string) {
        ORDER BY next_remind_at`,
     ),
     setStatus: db.prepare(`UPDATE tasks SET status = ?, next_remind_at = NULL WHERE id = ? AND chat_id = ?`),
+    setLastMsgId: db.prepare(`UPDATE tasks SET last_msg_id = ? WHERE id = ?`),
     reschedule: db.prepare(
       `UPDATE tasks SET due_at = ?, next_remind_at = ?, remind_count = 0, status = 'pending' WHERE id = ? AND chat_id = ?`,
     ),
@@ -102,6 +110,9 @@ export function openDb(path: string) {
     },
     setStatus(id: number, chatId: number, status: TaskStatus): boolean {
       return q.setStatus.run(status, id, chatId).changes > 0;
+    },
+    setLastMsgId(id: number, msgId: number | null): void {
+      q.setLastMsgId.run(msgId, id);
     },
     reschedule(id: number, chatId: number, dueAt: number): boolean {
       return q.reschedule.run(dueAt, dueAt, id, chatId).changes > 0;

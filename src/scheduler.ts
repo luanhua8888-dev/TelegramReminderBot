@@ -27,11 +27,18 @@ export function startScheduler(db: Db, api: Api): () => void {
     for (const task of db.tasksToRemind(now)) {
       const last = task.remind_count + 1 >= config.maxRepeats;
       const msg = formatReminder(task, config.maxRepeats);
+
+      // Xoá tin nhắc cũ nếu có để tránh ngập màn hình chat
+      if (task.last_msg_id) {
+        await api.deleteMessage(task.chat_id, task.last_msg_id).catch(() => {});
+      }
+
       try {
-        await api.sendMessage(task.chat_id, msg, {
+        const sent = await api.sendMessage(task.chat_id, msg, {
           parse_mode: "HTML",
           reply_markup: reminderKeyboard(task.id),
         });
+        db.setLastMsgId(task.id, sent.message_id);
       } catch (err) {
         console.error(`[scheduler] gửi #${task.id} lỗi:`, (err as Error).message);
         continue; // để tick sau thử lại

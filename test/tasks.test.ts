@@ -124,7 +124,7 @@ test("formatReminder hiển thị rõ thời gian hẹn và thời gian đặt v
     created_at: 1774800000000,
   };
   const msg = formatReminder(task, 6);
-  assert.match(msg, /🔔 <b>Đến giờ rồi!<\/b>/);
+  assert.match(msg, /\[Việc #42\] · Đến giờ rồi!/);
   assert.match(msg, /Hẹn lúc:/);
   assert.match(msg, /Đặt lúc:/);
   assert.match(msg, /<blockquote>Uống thuốc đau đầu<\/blockquote>/);
@@ -138,4 +138,41 @@ test("reminderKeyboard có nút '✍️ Giờ khác' (mv:id)", async () => {
   const mvBtn = allButtons.find((b) => "callback_data" in b && b.callback_data === "mv:123");
   assert.ok(mvBtn, "Phải có nút callback_data mv:123");
   assert.equal(mvBtn.text, "✍️ Giờ khác");
+});
+
+
+test("formatGroupedTasks phân nhóm rõ ràng Quá hạn và Sắp tới", async () => {
+  const { formatGroupedTasks } = await import("../src/tasks.ts");
+  const now = Date.now();
+  const tasks = [
+    {
+      id: 1,
+      chat_id: 123,
+      text: "Việc trễ",
+      due_at: now - 3600_000,
+      next_remind_at: now - 3600_000,
+      remind_count: 0,
+      recurring: null,
+      status: "pending" as const,
+      source: "telegram",
+      created_at: now - 7200_000,
+    },
+    {
+      id: 2,
+      chat_id: 123,
+      text: "Việc chiều nay",
+      due_at: now + 3600_000,
+      next_remind_at: now + 3600_000,
+      remind_count: 0,
+      recurring: null,
+      status: "pending" as const,
+      source: "telegram",
+      created_at: now,
+    },
+  ];
+  const formatted = formatGroupedTasks(tasks, { now, tzOffsetMin: 420 });
+  assert.match(formatted, /QUÁ HẠN/);
+  assert.match(formatted, /Việc trễ/);
+  assert.match(formatted, /HÔM NAY/);
+  assert.match(formatted, /Việc chiều nay/);
 });

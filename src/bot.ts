@@ -6,6 +6,7 @@ import { transcribeAudio } from "./stt.ts";
 import {
   formatTask,
   formatTaskCard,
+  formatGroupedTasks,
   renderProgressBar,
   escapeHtml,
   taskKeyboard,
@@ -115,11 +116,11 @@ export function createBot(db: Db, tasks: TaskService) {
       });
     }
 
-    const header = `☀️ <b>Việc hôm nay</b>\nTiến độ: <code>${progress}</code> (${stats.doneToday}/${totalToday} đã xong)\n`;
+    const header = `☀️ <b>Việc hôm nay</b> · Tiến độ: <code>${progress}</code> (${stats.doneToday}/${totalToday} đã xong)\n\n`;
     const body = list.length
-      ? list.map((t, idx) => formatTaskCard(t, idx + 1)).join("\n\n")
+      ? formatGroupedTasks(list)
       : "🎉 <i>Bạn đã hoàn thành toàn bộ công việc hôm nay!</i>";
-    return ctx.reply(`${header}\n${body}`, { parse_mode: "HTML", reply_markup: mainMenuKeyboard() });
+    return ctx.reply(`${header}${body}`, { parse_mode: "HTML", reply_markup: mainMenuKeyboard() });
   }
 
   function handleInbox(ctx: Context) {
@@ -179,8 +180,7 @@ export function createBot(db: Db, tasks: TaskService) {
   bot.command("list", (ctx) => {
     const list = db.pendingTasks(ctx.chat.id);
     if (!list.length) return ctx.reply("🎉 Không còn việc nào đang chờ.", { reply_markup: mainMenuKeyboard() });
-    const formatted = list.map((t, idx) => formatTaskCard(t, idx + 1)).join("\n\n");
-    return ctx.reply(`📋 <b>Danh sách việc đang chờ (${list.length})</b>\n\n${formatted}`, {
+    return ctx.reply(`📋 <b>Danh sách việc đang chờ (${list.length})</b>\n\n${formatGroupedTasks(list)}`, {
       parse_mode: "HTML",
       reply_markup: mainMenuKeyboard(),
     });

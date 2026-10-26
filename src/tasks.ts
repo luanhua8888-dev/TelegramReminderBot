@@ -156,7 +156,9 @@ export function reminderKeyboard(id: number): InlineKeyboard {
 export function formatReminder(task: Task, maxRepeats = 6): string {
   const isRepeat = task.remind_count > 0;
   const last = task.remind_count + 1 >= maxRepeats;
-  const header = isRepeat ? `🔔 <b>Nhắc lại (lần ${task.remind_count + 1})</b>` : "🔔 <b>Đến giờ rồi!</b>";
+  const header = isRepeat
+    ? `🔔 <b>[Việc #${task.id}] · Nhắc lại (lần ${task.remind_count + 1})</b>`
+    : `🔔 <b>[Việc #${task.id}] · Đến giờ rồi!</b>`;
 
   const details: string[] = [];
   if (task.due_at !== null) {
@@ -169,4 +171,59 @@ export function formatReminder(task: Task, maxRepeats = 6): string {
   const footer = last ? "\n\n<i>⚠️ Đây là lần nhắc cuối, bấm 📅 để dời nếu chưa làm.</i>" : "";
 
   return `${header}${meta}\n\n<blockquote>${escapeHtml(task.text)}</blockquote>${footer}`;
+}
+
+/** Phân nhóm danh sách việc trực quan: Quá hạn, Hôm nay, Tương lai, Hộp thư */
+export function formatGroupedTasks(
+  tasks: Task[],
+  options?: { now?: number; tzOffsetMin?: number },
+): string {
+  if (!tasks.length) return "🎉 <i>Không còn việc nào đang chờ.</i>";
+
+  const now = options?.now ?? Date.now();
+  const offset = options?.tzOffsetMin ?? config.tzOffsetMin;
+  const endOfDay = startOfLocalDay(now, offset) + DAY;
+
+  // 1. Quá hạn: có giờ và nhỏ hơn now - 1 phút
+  const overdue = tasks.filter((t) => t.due_at !== null && t.due_at < now - 60_000);
+  // 2. Hôm nay (sắp tới): từ now - 1 phút đến hết ngày hôm nay
+  const upcomingToday = tasks.filter(
+    (t) => t.due_at !== null && t.due_at >= now - 60_000 && t.due_at < endOfDay,
+  );
+  // 3. Ngày mai / tương lai xa hơn
+  const future = tasks.filter((t) => t.due_at !== null && t.due_at >= endOfDay);
+  // 4. Hộp thư (chưa xếp giờ)
+  const inbox = tasks.filter((t) => t.due_at === null);
+
+  const sections: string[] = [];
+
+  if (overdue.length) {
+    sections.push(
+      `🔴 <b>QUÁ HẠN (${overdue.length})</b>\n` +
+        overdue.map((t, idx) => formatTaskCard(t, idx + 1)).join("\n\n"),
+    );
+  }
+
+  if (upcomingToday.length) {
+    sections.push(
+      `🟡 <b>HÔM NAY (${upcomingToday.length})</b>\n` +
+        upcomingToday.map((t, idx) => formatTaskCard(t, idx + 1)).join("\n\n"),
+    );
+  }
+
+  if (future.length) {
+    sections.push(
+      `📅 <b>SẮP TỚI (${future.length})</b>\n` +
+        future.map((t, idx) => formatTaskCard(t, idx + 1)).join("\n\n"),
+    );
+  }
+
+  if (inbox.length) {
+    sections.push(
+      `📥 <b>HỘP THƯ CHƯA XẾP GIỜ (${inbox.length})</b>\n` +
+        inbox.map((t, idx) => formatTaskCard(t, idx + 1)).join("\n\n"),
+    );
+  }
+
+  return sections.join("\n\n───────────────\n\n");
 }
