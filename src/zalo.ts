@@ -113,7 +113,5 @@ async function connect(tasks: TaskService, tg: Api, ownerChatId: number): Promis
   api.listener.on("error", (err) => console.error("[zalo] listener lỗi:", err));
   api.listener.on("closed", (code, reason) => console.warn(`[zalo] mất kết nối (${code}) ${reason}`));
   api.listener.start({ retryOnClose: true });
-  await tg.sendMessage(ownerChatId, "🔗 Bridge Zalo đã kết nối. Nhắn <code>#note ...</code> trên Zalo để ghi việc.", {
-    parse_mode: "HTML",
-  });
+  console.log("[zalo] bridge đã kết nối.");
 }
