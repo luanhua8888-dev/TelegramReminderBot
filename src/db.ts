@@ -23,6 +23,36 @@ export type UserStatus = "pending" | "approved" | "rejected";
 export type User = { chat_id: number; name: string; status: UserStatus; updated_at: number };
 export type DailyStats = { doneToday: number; pendingToday: number; inbox: number };
 
+export type FarmUser = {
+  chat_id: number;
+  coins: number;
+  water: number;
+  food: number;
+  exp: number;
+  last_daily: number;
+  updated_at: number;
+};
+
+export type FarmPlot = {
+  id: number;
+  chat_id: number;
+  slot_index: number;
+  plant_type: string | null;
+  planted_at: number | null;
+  harvest_at: number | null;
+  watered: number;
+};
+
+export type FarmFish = {
+  id: number;
+  chat_id: number;
+  fish_type: string;
+  fed_count: number;
+  max_fed: number;
+  bought_at: number;
+  last_fed_at: number;
+};
+
 export function openDb(path: string) {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
@@ -47,6 +77,34 @@ export function openDb(path: string) {
       name TEXT NOT NULL,
       status TEXT NOT NULL,
       updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS farm_users (
+      chat_id INTEGER PRIMARY KEY,
+      coins INTEGER NOT NULL DEFAULT 100,
+      water INTEGER NOT NULL DEFAULT 5,
+      food INTEGER NOT NULL DEFAULT 5,
+      exp INTEGER NOT NULL DEFAULT 0,
+      last_daily INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS farm_plots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      chat_id INTEGER NOT NULL,
+      slot_index INTEGER NOT NULL,
+      plant_type TEXT,
+      planted_at INTEGER,
+      harvest_at INTEGER,
+      watered INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(chat_id, slot_index)
+    );
+    CREATE TABLE IF NOT EXISTS farm_fishes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      chat_id INTEGER NOT NULL,
+      fish_type TEXT NOT NULL,
+      fed_count INTEGER NOT NULL DEFAULT 0,
+      max_fed INTEGER NOT NULL DEFAULT 3,
+      bought_at INTEGER NOT NULL,
+      last_fed_at INTEGER NOT NULL DEFAULT 0
     );
   `);
 
@@ -93,6 +151,32 @@ export function openDb(path: string) {
         COALESCE(SUM(CASE WHEN status = 'pending' AND due_at IS NULL THEN 1 ELSE 0 END), 0) AS inbox
       FROM tasks WHERE chat_id = ?
     `),
+    getFarmUser: db.prepare(`SELECT * FROM farm_users WHERE chat_id = ?`),
+    initFarmUser: db.prepare(
+      `INSERT INTO farm_users (chat_id, coins, water, food, exp, last_daily, updated_at)
+       VALUES (?, 100, 5, 5, 0, 0, ?) ON CONFLICT(chat_id) DO NOTHING`,
+    ),
+    updateFarmUser: db.prepare(
+      `UPDATE farm_users SET coins = ?, water = ?, food = ?, exp = ?, last_daily = ?, updated_at = ? WHERE chat_id = ?`,
+    ),
+    getFarmPlots: db.prepare(`SELECT * FROM farm_plots WHERE chat_id = ? ORDER BY slot_index ASC`),
+    initFarmPlot: db.prepare(
+      `INSERT INTO farm_plots (chat_id, slot_index, plant_type, planted_at, harvest_at, watered)
+       VALUES (?, ?, null, null, null, 0) ON CONFLICT(chat_id, slot_index) DO NOTHING`,
+    ),
+    updateFarmPlot: db.prepare(
+      `UPDATE farm_plots SET plant_type = ?, planted_at = ?, harvest_at = ?, watered = ?
+       WHERE chat_id = ? AND slot_index = ?`,
+    ),
+    getFarmFishes: db.prepare(`SELECT * FROM farm_fishes WHERE chat_id = ? ORDER BY id ASC`),
+    addFarmFish: db.prepare(
+      `INSERT INTO farm_fishes (chat_id, fish_type, fed_count, max_fed, bought_at, last_fed_at)
+       VALUES (?, ?, 0, ?, ?, 0) RETURNING id`,
+    ),
+    feedFarmFish: db.prepare(
+      `UPDATE farm_fishes SET fed_count = fed_count + 1, last_fed_at = ? WHERE id = ? AND chat_id = ?`,
+    ),
+    deleteFarmFish: db.prepare(`DELETE FROM farm_fishes WHERE id = ? AND chat_id = ?`),
   };
 
   return {
@@ -151,6 +235,47 @@ export function openDb(path: string) {
         pendingToday: Number(row?.pendingToday ?? 0),
         inbox: Number(row?.inbox ?? 0),
       };
+    },
+    getOrCreateFarmUser(chatId: number): FarmUser {
+      let user = q.getFarmUser.get(chatId) as FarmUser | undefined;
+      if (!user) {
+        q.initFarmUser.run(chatId, Date.now());
+        q.initFarmPlot.run(chatId, 0);
+        q.initFarmPlot.run(chatId, 1);
+        q.initFarmPlot.run(chatId, 2);
+        user = q.getFarmUser.get(chatId) as FarmUser;
+      }
+      return user;
+    },
+    saveFarmUser(user: FarmUser): void {
+      q.updateFarmUser.run(user.coins, user.water, user.food, user.exp, user.last_daily, Date.now(), user.chat_id);
+    },
+    getFarmPlots(chatId: number): FarmPlot[] {
+      this.getOrCreateFarmUser(chatId);
+      return q.getFarmPlots.all(chatId) as FarmPlot[];
+    },
+    saveFarmPlot(
+      chatId: number,
+      slotIndex: number,
+      plantType: string | null,
+      plantedAt: number | null,
+      harvestAt: number | null,
+      watered: number,
+    ): void {
+      q.updateFarmPlot.run(plantType, plantedAt, harvestAt, watered, chatId, slotIndex);
+    },
+    getFarmFishes(chatId: number): FarmFish[] {
+      return q.getFarmFishes.all(chatId) as FarmFish[];
+    },
+    addFarmFish(chatId: number, fishType: string, maxFed: number): number {
+      const res = q.addFarmFish.get(chatId, fishType, maxFed, Date.now()) as { id: number };
+      return res.id;
+    },
+    feedFarmFish(fishId: number, chatId: number): boolean {
+      return q.feedFarmFish.run(Date.now(), fishId, chatId).changes > 0;
+    },
+    deleteFarmFish(fishId: number, chatId: number): boolean {
+      return q.deleteFarmFish.run(fishId, chatId).changes > 0;
     },
   };
 }

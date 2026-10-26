@@ -2,6 +2,18 @@ import { Bot, Keyboard, type Context } from "grammy";
 import { accessMiddleware, isHost, registerHostCommands } from "./access.ts";
 import { config, llmEnabled, sttEnabled } from "./config.ts";
 import type { Db } from "./db.ts";
+import {
+  createFarmService,
+  renderFarmDashboard,
+  farmDashboardKeyboard,
+  renderGardenView,
+  gardenKeyboard,
+  seedSelectKeyboard,
+  renderPondView,
+  pondKeyboard,
+  renderShopView,
+  shopKeyboard,
+} from "./farm.ts";
 import { fetchMuStatus, formatMuMessage, isMuQuery, muKeyboard } from "./mu.ts";
 import { checkSensitiveContent } from "./security.ts";
 import { transcribeAudio } from "./stt.ts";
@@ -37,6 +49,7 @@ Lệnh:
 /move 12 mai 10h – dời giờ #12 (hoặc /move #12 mai 10h)
 /del 12 – xoá #12 (hoặc /del #12)
 /mu – tình trạng MU "Ra Hang" hay "Vô Hang"
+/farm – Nông trại vui vẻ (Trồng cây & Nuôi cá)
 /id – xem chat id
 
 Đến giờ mà chưa bấm ✅ thì bot nhắc lại mỗi ${config.repeatEveryMin} phút (tối đa ${config.maxRepeats} lần).
@@ -53,6 +66,7 @@ const HOST_HELP = `
 
 export function createBot(db: Db, tasks: TaskService) {
   const bot = new Bot(config.telegramToken);
+  const farm = createFarmService(db);
 
   // Chuẩn hoá lệnh viết hoa (/MU, /Mu, /TODAY, /DEL...) về chữ thường để người dùng gõ kiểu gì cũng nhận
   bot.use((ctx, next) => {
@@ -243,6 +257,18 @@ export function createBot(db: Db, tasks: TaskService) {
 
   bot.command(["mu", "hang", "manutd"], handleMu);
 
+  function handleFarm(ctx: Context) {
+    const user = farm.getUser(ctx.chat!.id);
+    const plots = farm.getPlots(ctx.chat!.id);
+    const fishes = farm.getFishes(ctx.chat!.id);
+    return ctx.reply(renderFarmDashboard(user, plots, fishes), {
+      parse_mode: "HTML",
+      reply_markup: farmDashboardKeyboard(),
+    });
+  }
+
+  bot.command(["farm", "nongtrai", "vuon"], handleFarm);
+
   // Tin nhắn thường = ghi note mới hoặc tương tác menu. Trong nhóm chỉ nhận /add
   bot.on("message:text", async (ctx) => {
     if (ctx.chat.type !== "private") return;
@@ -283,6 +309,10 @@ export function createBot(db: Db, tasks: TaskService) {
     // Kiểm tra câu hỏi / nhắc về MU hoặc Ra hang / Vô hang
     if (isMuQuery(text)) {
       return handleMu(ctx);
+    }
+
+    if (text.toLowerCase() === "nông trại" || text.toLowerCase() === "nong trai" || text.toLowerCase() === "farm") {
+      return handleFarm(ctx);
     }
 
     // Kiểm tra nếu đang chờ nhập giờ mới để dời việc
@@ -447,6 +477,153 @@ export function createBot(db: Db, tasks: TaskService) {
       } else {
         return ctx.answerCallbackQuery({ text: "Trận đấu đã diễn ra hoặc không còn hợp lệ." });
       }
+    }
+  });
+
+  bot.callbackQuery(/^farm:([a-z_]+)(?::([a-z0-9_]+))?(?::([a-z0-9_]+))?$/, async (ctx) => {
+    const chatId = ctx.chat!.id;
+    const [, action, arg1, arg2] = ctx.match;
+
+    if (action === "menu") {
+      const user = farm.getUser(chatId);
+      const plots = farm.getPlots(chatId);
+      const fishes = farm.getFishes(chatId);
+      await ctx.answerCallbackQuery();
+      return ctx.editMessageText(renderFarmDashboard(user, plots, fishes), {
+        parse_mode: "HTML",
+        reply_markup: farmDashboardKeyboard(),
+      }).catch(() => {});
+    }
+
+    if (action === "garden") {
+      const user = farm.getUser(chatId);
+      const plots = farm.getPlots(chatId);
+      await ctx.answerCallbackQuery();
+      return ctx.editMessageText(renderGardenView(user, plots), {
+        parse_mode: "HTML",
+        reply_markup: gardenKeyboard(plots),
+      }).catch(() => {});
+    }
+
+    if (action === "seedmenu" && arg1 !== undefined) {
+      const slotIndex = Number(arg1);
+      await ctx.answerCallbackQuery();
+      return ctx.editMessageText(`🌱 <b>Chọn loại hạt giống muốn gieo vào Ô #${slotIndex + 1}:</b>`, {
+        parse_mode: "HTML",
+        reply_markup: seedSelectKeyboard(slotIndex),
+      }).catch(() => {});
+    }
+
+    if (action === "plant" && arg1 !== undefined && arg2) {
+      const slotIndex = Number(arg1);
+      const res = farm.plant(chatId, slotIndex, arg2);
+      await ctx.answerCallbackQuery({ text: res.message });
+      const user = farm.getUser(chatId);
+      const plots = farm.getPlots(chatId);
+      return ctx.editMessageText(renderGardenView(user, plots), {
+        parse_mode: "HTML",
+        reply_markup: gardenKeyboard(plots),
+      }).catch(() => {});
+    }
+
+    if (action === "water" && arg1 !== undefined) {
+      const slotIndex = Number(arg1);
+      const res = farm.water(chatId, slotIndex);
+      await ctx.answerCallbackQuery({ text: res.message });
+      const user = farm.getUser(chatId);
+      const plots = farm.getPlots(chatId);
+      return ctx.editMessageText(renderGardenView(user, plots), {
+        parse_mode: "HTML",
+        reply_markup: gardenKeyboard(plots),
+      }).catch(() => {});
+    }
+
+    if (action === "harvest" && arg1 !== undefined) {
+      const slotIndex = Number(arg1);
+      const res = farm.harvest(chatId, slotIndex);
+      await ctx.answerCallbackQuery({ text: res.message });
+      const user = farm.getUser(chatId);
+      const plots = farm.getPlots(chatId);
+      return ctx.editMessageText(renderGardenView(user, plots), {
+        parse_mode: "HTML",
+        reply_markup: gardenKeyboard(plots),
+      }).catch(() => {});
+    }
+
+    if (action === "pond") {
+      const user = farm.getUser(chatId);
+      const fishes = farm.getFishes(chatId);
+      await ctx.answerCallbackQuery();
+      return ctx.editMessageText(renderPondView(user, fishes), {
+        parse_mode: "HTML",
+        reply_markup: pondKeyboard(fishes),
+      }).catch(() => {});
+    }
+
+    if (action === "feed" && arg1 !== undefined) {
+      const fishId = Number(arg1);
+      const res = farm.feedFish(chatId, fishId);
+      await ctx.answerCallbackQuery({ text: res.message });
+      const user = farm.getUser(chatId);
+      const fishes = farm.getFishes(chatId);
+      return ctx.editMessageText(renderPondView(user, fishes), {
+        parse_mode: "HTML",
+        reply_markup: pondKeyboard(fishes),
+      }).catch(() => {});
+    }
+
+    if (action === "sellfish" && arg1 !== undefined) {
+      const fishId = Number(arg1);
+      const res = farm.sellFish(chatId, fishId);
+      await ctx.answerCallbackQuery({ text: res.message });
+      const user = farm.getUser(chatId);
+      const fishes = farm.getFishes(chatId);
+      return ctx.editMessageText(renderPondView(user, fishes), {
+        parse_mode: "HTML",
+        reply_markup: pondKeyboard(fishes),
+      }).catch(() => {});
+    }
+
+    if (action === "shop") {
+      const user = farm.getUser(chatId);
+      await ctx.answerCallbackQuery();
+      return ctx.editMessageText(renderShopView(user), {
+        parse_mode: "HTML",
+        reply_markup: shopKeyboard(),
+      }).catch(() => {});
+    }
+
+    if (action === "buyfish" && arg1) {
+      const res = farm.buyFish(chatId, arg1);
+      await ctx.answerCallbackQuery({ text: res.message });
+      const user = farm.getUser(chatId);
+      const fishes = farm.getFishes(chatId);
+      return ctx.editMessageText(renderPondView(user, fishes), {
+        parse_mode: "HTML",
+        reply_markup: pondKeyboard(fishes),
+      }).catch(() => {});
+    }
+
+    if (action === "buysupply" && (arg1 === "water" || arg1 === "food")) {
+      const res = farm.buySupply(chatId, arg1);
+      await ctx.answerCallbackQuery({ text: res.message });
+      const user = farm.getUser(chatId);
+      return ctx.editMessageText(renderShopView(user), {
+        parse_mode: "HTML",
+        reply_markup: shopKeyboard(),
+      }).catch(() => {});
+    }
+
+    if (action === "daily") {
+      const res = farm.claimDaily(chatId);
+      await ctx.answerCallbackQuery({ text: res.message, show_alert: true });
+      const user = farm.getUser(chatId);
+      const plots = farm.getPlots(chatId);
+      const fishes = farm.getFishes(chatId);
+      return ctx.editMessageText(renderFarmDashboard(user, plots, fishes), {
+        parse_mode: "HTML",
+        reply_markup: farmDashboardKeyboard(),
+      }).catch(() => {});
     }
   });
 
