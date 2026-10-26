@@ -1,7 +1,8 @@
 import { Bot, Keyboard, type Context } from "grammy";
 import { accessMiddleware, isHost, registerHostCommands } from "./access.ts";
-import { config, llmEnabled } from "./config.ts";
+import { config, llmEnabled, sttEnabled } from "./config.ts";
 import type { Db } from "./db.ts";
+import { transcribeAudio } from "./stt.ts";
 import {
   formatTask,
   formatTaskCard,
@@ -221,6 +222,49 @@ export function createBot(db: Db, tasks: TaskService) {
     }
 
     await addNote(ctx, text);
+  });
+
+  // Nhận voice note hoặc file audio, chuyển thành text qua STT rồi tự động tạo nhắc việc
+  bot.on(["message:voice", "message:audio"], async (ctx) => {
+    if (ctx.chat.type !== "private") return;
+    const blocked = overLimit(ctx.chat.id);
+    if (blocked) return ctx.reply(blocked);
+
+    if (!sttEnabled) {
+      return ctx.reply(
+        "🎙 <b>Tính năng ghi âm chưa bật</b>\n\nĐể bot nhận diện giọng nói, vui lòng điền <code>STT_API_KEY</code> (hỗ trợ Groq hoặc OpenAI) trong file <code>.env</code>.",
+        { parse_mode: "HTML", reply_markup: mainMenuKeyboard() },
+      );
+    }
+
+    const typing = () => ctx.replyWithChatAction("record_voice").catch(() => {});
+    void typing();
+    const keepTyping = setInterval(typing, 4500);
+
+    try {
+      const fileId = ctx.message.voice ? ctx.message.voice.file_id : ctx.message.audio!.file_id;
+      const file = await ctx.api.getFile(fileId);
+      if (!file.file_path) {
+        return ctx.reply("Không thể tải file âm thanh từ Telegram.");
+      }
+      const downloadUrl = `https://api.telegram.org/file/bot${config.telegramToken}/${file.file_path}`;
+      const res = await fetch(downloadUrl);
+      if (!res.ok) {
+        return ctx.reply("Không thể tải dữ liệu âm thanh từ máy chủ Telegram.");
+      }
+      const buffer = await res.arrayBuffer();
+      const transcribed = await transcribeAudio(new Uint8Array(buffer), file.file_path.split("/").pop() ?? "voice.ogg");
+      if (!transcribed.trim()) {
+        return ctx.reply("🎙 Không nhận diện được nội dung từ file ghi âm. Bạn nói lại rõ hơn nhé!");
+      }
+      await ctx.reply(`🎙 <i>"${escapeHtml(transcribed)}"</i>`, { parse_mode: "HTML" });
+      await addNote(ctx, transcribed);
+    } catch (err) {
+      console.error("[stt]", (err as Error).message);
+      await ctx.reply("Có lỗi khi nhận diện giọng nói, vui lòng thử lại bằng tin nhắn gõ tay.");
+    } finally {
+      clearInterval(keepTyping);
+    }
   });
 
   bot.callbackQuery(/^(done|del|tmr|snz):(\d+)(?::(\w+))?$/, async (ctx) => {

@@ -50,6 +50,13 @@ export const config = {
     // Model local chạy CPU có thể mất vài chục giây ở lần gọi đầu (nạp model)
     timeoutMs: num("LLM_TIMEOUT_SEC", 60) * 1000,
   },
+  stt: {
+    apiKey: process.env.STT_API_KEY ?? process.env.LLM_API_KEY ?? "",
+    // Mặc định Groq hoặc OpenAI
+    baseUrl: (process.env.STT_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, ""),
+    model: process.env.STT_MODEL ?? "whisper-1",
+    language: process.env.STT_LANGUAGE ?? "vi",
+  },
   zalo: {
     enabled: process.env.ZALO_ENABLED === "1",
     credentialsPath: process.env.ZALO_CREDENTIALS_PATH ?? "data/zalo-credentials.json",
@@ -59,3 +66,4 @@ export const config = {
 };
 
 export const llmEnabled = Boolean(config.llm.model && (config.llm.apiKey || !config.llm.baseUrl.includes("openai.com")));
+export const sttEnabled = Boolean(config.stt.apiKey || !config.stt.baseUrl.includes("openai.com"));
