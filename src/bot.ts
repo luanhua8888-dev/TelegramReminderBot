@@ -1,8 +1,17 @@
-import { Bot, type Context } from "grammy";
+import { Bot, Keyboard, type Context } from "grammy";
 import { accessMiddleware, isHost, registerHostCommands } from "./access.ts";
 import { config, llmEnabled } from "./config.ts";
 import type { Db } from "./db.ts";
-import { formatTask, escapeHtml, taskKeyboard, when, type AddResult, type TaskService } from "./tasks.ts";
+import {
+  formatTask,
+  formatTaskCard,
+  renderProgressBar,
+  escapeHtml,
+  taskKeyboard,
+  when,
+  type AddResult,
+  type TaskService,
+} from "./tasks.ts";
 import { DAY, HOUR, fromLocal, startOfLocalDay, toLocal } from "./time.ts";
 import { requestZaloLogin } from "./zalo.ts";
 
@@ -42,7 +51,12 @@ export function createBot(db: Db, tasks: TaskService) {
   bot.use(accessMiddleware(db));
   registerHostCommands(bot, db, HELP);
 
-  bot.command(["start", "help"], (ctx) => ctx.reply(HELP + (isHost(ctx.chat.id) ? HOST_HELP : ""), { parse_mode: "HTML" }));
+  bot.command(["start", "help"], (ctx) =>
+    ctx.reply(HELP + (isHost(ctx.chat.id) ? HOST_HELP : ""), {
+      parse_mode: "HTML",
+      reply_markup: mainMenuKeyboard(),
+    }),
+  );
   bot.command("id", (ctx) => ctx.reply(`Chat id: <code>${ctx.chat.id}</code>`, { parse_mode: "HTML" }));
 
   bot.command("zalo", (ctx) => {
@@ -80,6 +94,77 @@ export function createBot(db: Db, tasks: TaskService) {
     }
   }
 
+  function handleToday(ctx: Context) {
+    const start = startOfLocalDay(Date.now(), config.tzOffsetMin);
+    const end = start + DAY;
+    const list = db.pendingTasks(ctx.chat!.id).filter((t) => t.due_at !== null && t.due_at < end);
+    const stats = db.getDailyStats(ctx.chat!.id, start, end);
+    const totalToday = stats.doneToday + stats.pendingToday;
+    const progress = renderProgressBar(stats.doneToday, totalToday);
+
+    if (!list.length && stats.doneToday === 0) {
+      return ctx.reply("☀️ <b>Việc hôm nay</b>\n\nBạn chưa có việc nào hôm nay. Nhắn nội dung bất kỳ để tạo việc mới!", {
+        parse_mode: "HTML",
+        reply_markup: mainMenuKeyboard(),
+      });
+    }
+
+    const header = `☀️ <b>Việc hôm nay</b>\nTiến độ: <code>${progress}</code> (${stats.doneToday}/${totalToday} đã xong)\n`;
+    const body = list.length
+      ? list.map((t, idx) => formatTaskCard(t, idx + 1)).join("\n\n")
+      : "🎉 <i>Bạn đã hoàn thành toàn bộ công việc hôm nay!</i>";
+    return ctx.reply(`${header}\n${body}`, { parse_mode: "HTML", reply_markup: mainMenuKeyboard() });
+  }
+
+  function handleInbox(ctx: Context) {
+    const list = db.pendingTasks(ctx.chat!.id).filter((t) => t.due_at === null);
+    if (!list.length) {
+      return ctx.reply("📥 Hộp thư Inbox trống. Mọi việc đều đã có lịch nhắc!", {
+        reply_markup: mainMenuKeyboard(),
+      });
+    }
+    const formatted = list.map((t, idx) => formatTaskCard(t, idx + 1)).join("\n\n");
+    return ctx.reply(
+      `📥 <b>Hộp thư Inbox (${list.length} việc chưa xếp giờ)</b>\n<i>Dùng <code>/move &lt;id&gt; &lt;thời gian&gt;</code> để đặt giờ nhắc</i>\n\n${formatted}`,
+      { parse_mode: "HTML", reply_markup: mainMenuKeyboard() },
+    );
+  }
+
+  function handleStats(ctx: Context) {
+    const start = startOfLocalDay(Date.now(), config.tzOffsetMin);
+    const end = start + DAY;
+    const stats = db.getDailyStats(ctx.chat!.id, start, end);
+    const totalToday = stats.doneToday + stats.pendingToday;
+    const progress = renderProgressBar(stats.doneToday, totalToday);
+    const totalPending = db.countPending(ctx.chat!.id);
+
+    const msg = [
+      "📊 <b>Thống kê công việc</b>",
+      "",
+      `Tiến độ hôm nay: <code>${progress}</code>`,
+      `• Đã hoàn thành: <b>${stats.doneToday}</b> việc`,
+      `• Đang chờ hôm nay: <b>${stats.pendingToday}</b> việc`,
+      `• Hộp thư (chưa xếp giờ): <b>${stats.inbox}</b> việc`,
+      `• Tổng việc chưa hoàn thành: <b>${totalPending}</b> việc`,
+    ].join("\n");
+
+    return ctx.reply(msg, { parse_mode: "HTML", reply_markup: mainMenuKeyboard() });
+  }
+
+  function handleAddHelp(ctx: Context) {
+    const msg = [
+      "✍️ <b>Thêm nhắc việc nhanh</b>",
+      "",
+      "Bạn chỉ cần gõ tin nhắn bình thường (hoặc gửi 🎙 <b>tin nhắn thoại</b>):",
+      "• <code>mai 9h gọi khách A</code>",
+      "• <code>30p nữa uống thuốc</code>",
+      "• <code>thứ 6 3h chiều nộp báo cáo</code>",
+      "• <code>mỗi ngày 7h tập thể dục</code>",
+      "• <code>mua sữa</code> (tự xếp vào khung giờ trống)",
+    ].join("\n");
+    return ctx.reply(msg, { parse_mode: "HTML", reply_markup: mainMenuKeyboard() });
+  }
+
   bot.command("add", async (ctx) => {
     if (!ctx.match.trim()) return ctx.reply("Cú pháp: /add mai 9h gọi khách A");
     await addNote(ctx, ctx.match);
@@ -87,16 +172,17 @@ export function createBot(db: Db, tasks: TaskService) {
 
   bot.command("list", (ctx) => {
     const list = db.pendingTasks(ctx.chat.id);
-    if (!list.length) return ctx.reply("🎉 Không còn việc nào.");
-    return ctx.reply(list.map(formatTask).join("\n"), { parse_mode: "HTML" });
+    if (!list.length) return ctx.reply("🎉 Không còn việc nào đang chờ.", { reply_markup: mainMenuKeyboard() });
+    const formatted = list.map((t, idx) => formatTaskCard(t, idx + 1)).join("\n\n");
+    return ctx.reply(`📋 <b>Danh sách việc đang chờ (${list.length})</b>\n\n${formatted}`, {
+      parse_mode: "HTML",
+      reply_markup: mainMenuKeyboard(),
+    });
   });
 
-  bot.command("today", (ctx) => {
-    const end = startOfLocalDay(Date.now(), config.tzOffsetMin) + DAY;
-    const list = db.pendingTasks(ctx.chat.id).filter((t) => t.due_at !== null && t.due_at < end);
-    if (!list.length) return ctx.reply("Hôm nay không có việc nào có giờ. /list để xem tất cả.");
-    return ctx.reply(list.map(formatTask).join("\n"), { parse_mode: "HTML" });
-  });
+  bot.command("today", (ctx) => handleToday(ctx));
+  bot.command("inbox", (ctx) => handleInbox(ctx));
+  bot.command(["stats", "status"], (ctx) => handleStats(ctx));
 
   bot.command("done", (ctx) => {
     const id = Number(ctx.match.trim());
@@ -117,11 +203,24 @@ export function createBot(db: Db, tasks: TaskService) {
     return ctx.reply(at === null ? "Không hiểu thời gian hoặc không tìm thấy việc." : `📅 #${m[1]} → ${when(at)}`);
   });
 
-  // Tin nhắn thường = ghi note mới. Trong nhóm chỉ nhận /add, để không biến mọi câu chat thành việc
+  // Tin nhắn thường = ghi note mới hoặc tương tác menu. Trong nhóm chỉ nhận /add
   bot.on("message:text", async (ctx) => {
     if (ctx.chat.type !== "private") return;
-    if (ctx.message.text.startsWith("/")) return ctx.reply("Lệnh không tồn tại. /help để xem hướng dẫn.");
-    await addNote(ctx, ctx.message.text);
+    const text = ctx.message.text.trim();
+    if (text.startsWith("/")) return ctx.reply("Lệnh không tồn tại. /help để xem hướng dẫn.");
+
+    if (text === "📋 Việc hôm nay" || text === "📋 Hôm nay") return handleToday(ctx);
+    if (text === "📥 Hộp thư Inbox" || text === "📥 Hộp thư") return handleInbox(ctx);
+    if (text === "📊 Tiến độ" || text === "📊 Thống kê") return handleStats(ctx);
+    if (text === "➕ Thêm việc") return handleAddHelp(ctx);
+    if (text === "❓ Trợ giúp") {
+      return ctx.reply(HELP + (isHost(ctx.chat.id) ? HOST_HELP : ""), {
+        parse_mode: "HTML",
+        reply_markup: mainMenuKeyboard(),
+      });
+    }
+
+    await addNote(ctx, text);
   });
 
   bot.callbackQuery(/^(done|del|tmr|snz):(\d+)(?::(\w+))?$/, async (ctx) => {
@@ -166,9 +265,26 @@ function untilTonight(): number {
   return tonight > now ? tonight - now : HOUR;
 }
 
+export function mainMenuKeyboard(): Keyboard {
+  return new Keyboard()
+    .text("📋 Việc hôm nay")
+    .text("➕ Thêm việc")
+    .row()
+    .text("📥 Hộp thư Inbox")
+    .text("📊 Tiến độ")
+    .text("❓ Trợ giúp")
+    .resized()
+    .persistent();
+}
+
 async function replyAdded(ctx: Context, { task, auto }: AddResult) {
-  let msg = `📝 ${formatTask(task)}`;
-  if (task.due_at === null) msg += `\n<i>Chưa có giờ nên chưa nhắc. Đặt giờ: /move ${task.id} mai 9h</i>`;
-  else if (auto) msg += `\n<i>🤖 Bạn chưa nói giờ nên mình xếp vào khung trống. Đổi: /move ${task.id} mai 10h</i>`;
+  let msg = `📝 Đã ghi nhận: <b>#${task.id}</b>\n<blockquote>${escapeHtml(task.text)}</blockquote>`;
+  if (task.due_at === null) {
+    msg += `\n⏰ <i>Chưa có giờ (lưu vào inbox). Đặt giờ: <code>/move ${task.id} mai 9h</code></i>`;
+  } else if (auto) {
+    msg += `\n⏰ Nhắc lúc: <b>${when(task.due_at)}</b> <i>(🤖 tự xếp vào khung trống)</i>`;
+  } else {
+    msg += `\n⏰ Nhắc lúc: <b>${when(task.due_at)}</b>`;
+  }
   await ctx.reply(msg, { parse_mode: "HTML", reply_markup: taskKeyboard(task.id) });
 }

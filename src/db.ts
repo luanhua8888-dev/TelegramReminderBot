@@ -20,6 +20,7 @@ export type Task = {
 // Người dùng ngoài host: xin quyền → host duyệt hoặc từ chối
 export type UserStatus = "pending" | "approved" | "rejected";
 export type User = { chat_id: number; name: string; status: UserStatus; updated_at: number };
+export type DailyStats = { doneToday: number; pendingToday: number; inbox: number };
 
 export function openDb(path: string) {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
@@ -77,6 +78,13 @@ export function openDb(path: string) {
        ON CONFLICT(chat_id) DO UPDATE SET name = excluded.name, status = excluded.status, updated_at = excluded.updated_at`,
     ),
     listUsers: db.prepare(`SELECT * FROM users ORDER BY status, updated_at DESC`),
+    dailyStats: db.prepare(`
+      SELECT
+        COALESCE(SUM(CASE WHEN status = 'done' AND due_at IS NOT NULL AND due_at >= ? AND due_at < ? THEN 1 ELSE 0 END), 0) AS doneToday,
+        COALESCE(SUM(CASE WHEN status = 'pending' AND due_at IS NOT NULL AND due_at >= ? AND due_at < ? THEN 1 ELSE 0 END), 0) AS pendingToday,
+        COALESCE(SUM(CASE WHEN status = 'pending' AND due_at IS NULL THEN 1 ELSE 0 END), 0) AS inbox
+      FROM tasks WHERE chat_id = ?
+    `),
   };
 
   return {
@@ -122,6 +130,16 @@ export function openDb(path: string) {
     },
     listUsers(): User[] {
       return q.listUsers.all() as User[];
+    },
+    getDailyStats(chatId: number, startOfDay: number, endOfDay: number): DailyStats {
+      const row = q.dailyStats.get(startOfDay, endOfDay, startOfDay, endOfDay, chatId) as
+        | { doneToday: number; pendingToday: number; inbox: number }
+        | undefined;
+      return {
+        doneToday: Number(row?.doneToday ?? 0),
+        pendingToday: Number(row?.pendingToday ?? 0),
+        inbox: Number(row?.inbox ?? 0),
+      };
     },
   };
 }

@@ -82,3 +82,17 @@ test("formatTaskCard định dạng HTML blockquote và emoji", () => {
   assert.match(card, /<b>#1<\/b>/);
   assert.match(card, /<blockquote>Mua sữa tươi<\/blockquote>/);
 });
+
+test("db.getDailyStats đếm đúng task hoàn thành và tồn đọng hôm nay", () => {
+  const db = openDb(":memory:");
+  const now = Date.now();
+  const t1 = db.addTask(100, "Việc 1", now + 1000, null, "telegram");
+  const t2 = db.addTask(100, "Việc 2", now + 2000, null, "telegram");
+  const t3 = db.addTask(100, "Việc inbox", null, null, "telegram");
+  db.setStatus(t1.id, 100, "done");
+
+  const stats = db.getDailyStats(100, now - 10000, now + 10000);
+  assert.equal(stats.doneToday, 1);
+  assert.equal(stats.pendingToday, 1);
+  assert.equal(stats.inbox, 1);
+});
