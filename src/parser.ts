@@ -27,8 +27,10 @@ const RE = {
   ),
   // không nhận "sang", "toi", "dem" không dấu vì trùng "sang", "tôi", "đem"
   timeOfDay: word("(sáng|trưa|trua|chiều|chieu|tối|đêm)"),
-  time: word("(?:lúc\\s*)?(\\d{1,2})\\s*(?:h|g|giờ|gio|:)\\s*(\\d{1,2}|rưỡi|ruoi)?\\s*(am|pm)?|lúc\\s*(\\d{1,2})"),
-  filler: /^(?:nhắc|nhac|nhớ|nho)(?:\s+(?:tôi|toi|mình|minh|tui|tao|em|anh|chị|chi))?(?:\s+(?:là|la))?\s+/u,
+  time: word(
+    "(?:lúc\\s*)?(\\d{1,2})\\s*(?:h|g|giờ|gio|:)\\s*(\\d{1,2}|rưỡi|ruoi)?\\s*(am|pm)?|lúc\\s*(\\d{1,2})|(\\d{1,2})\\s*(am|pm)",
+  ),
+  filler: /^(?:nhắc|nhac|nhớ|nho)(?:\s+(?:tôi|toi|mình|minh|tui|tao|em|anh|chị|chi))?(?:\s+(?:là|la))?(?:\s+vào)?\s+/u,
 };
 
 const WEEKDAY_WORDS: Record<string, number> = { hai: 1, ba: 2, tư: 3, tu: 3, bốn: 3, năm: 4, sáu: 5, bảy: 6, bay: 6 };
@@ -153,12 +155,14 @@ export function parseVietnamese(input: string, opts: ParseOptions): Parsed {
   let minute = 0;
   const tm = c.take(RE.time);
   if (tm) {
-    hour = Number(tm[1] ?? tm[4]);
+    hour = Number(tm[1] ?? tm[4] ?? tm[5]);
     const minPart = tm[2];
     if (minPart) minute = /^\d/.test(minPart) ? Number(minPart) : 30;
-    const pm = tm[3] === "pm" || tod === "chiều" || tod === "tối" || (tod === "đêm" && hour >= 6);
+    const ampm = tm[3] ?? tm[6];
+    if (ampm === "am" && hour === 12) hour = 0;
+    const pm = ampm === "pm" || tod === "chiều" || tod === "tối" || (tod === "đêm" && hour >= 6);
     if (pm && hour < 12) hour += 12;
-    else if (!tod && !tm[3] && hour >= 1 && hour <= 5) hour += 12; // "3h" gần như luôn là 3h chiều
+    else if (!tod && !ampm && hour >= 1 && hour <= 5) hour += 12; // "3h" gần như luôn là 3h chiều
     if (hour > 23 || minute > 59) hour = null;
   }
 
