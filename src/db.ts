@@ -17,6 +17,10 @@ export type Task = {
   created_at: number;
 };
 
+// Người dùng ngoài host: xin quyền → host duyệt hoặc từ chối
+export type UserStatus = "pending" | "approved" | "rejected";
+export type User = { chat_id: number; name: string; status: UserStatus; updated_at: number };
+
 export function openDb(path: string) {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
@@ -36,6 +40,12 @@ export function openDb(path: string) {
     );
     CREATE INDEX IF NOT EXISTS idx_tasks_remind ON tasks(status, next_remind_at);
     CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS users (
+      chat_id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      status TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
   `);
 
   const q = {
@@ -60,6 +70,13 @@ export function openDb(path: string) {
     chats: db.prepare(`SELECT DISTINCT chat_id FROM tasks WHERE status = 'pending'`),
     getMeta: db.prepare(`SELECT value FROM meta WHERE key = ?`),
     setMeta: db.prepare(`INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`),
+    countPending: db.prepare(`SELECT count(*) AS n FROM tasks WHERE chat_id = ? AND status = 'pending'`),
+    getUser: db.prepare(`SELECT * FROM users WHERE chat_id = ?`),
+    setUser: db.prepare(
+      `INSERT INTO users (chat_id, name, status, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(chat_id) DO UPDATE SET name = excluded.name, status = excluded.status, updated_at = excluded.updated_at`,
+    ),
+    listUsers: db.prepare(`SELECT * FROM users ORDER BY status, updated_at DESC`),
   };
 
   return {
@@ -93,6 +110,18 @@ export function openDb(path: string) {
     },
     setMeta(key: string, value: string): void {
       q.setMeta.run(key, value);
+    },
+    countPending(chatId: number): number {
+      return (q.countPending.get(chatId) as { n: number }).n;
+    },
+    getUser(chatId: number): User | undefined {
+      return q.getUser.get(chatId) as User | undefined;
+    },
+    setUser(chatId: number, name: string, status: UserStatus): void {
+      q.setUser.run(chatId, name, status, Date.now());
+    },
+    listUsers(): User[] {
+      return q.listUsers.all() as User[];
     },
   };
 }

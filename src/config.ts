@@ -20,10 +20,13 @@ const allowedChatIds = (process.env.ALLOWED_CHAT_IDS ?? "")
 
 export const config = {
   telegramToken: token,
-  // Rỗng = ai cũng dùng được bot (chỉ nên để rỗng lúc mới setup để lấy chat id)
+  // Rỗng = ai cũng dùng được bot
   allowedChatIds,
-  // Chat nhận note từ Zalo và tin nhắn hệ thống
-  ownerChatId: allowedChatIds[0],
+  // Chủ bot: nhận note từ Zalo, được dùng /zalo. Mặc định = chat id đầu tiên trong ALLOWED_CHAT_IDS
+  ownerChatId: process.env.OWNER_CHAT_ID ? Number(process.env.OWNER_CHAT_ID) : allowedChatIds[0],
+  // Chống spam khi mở cho mọi người
+  maxPendingPerChat: num("MAX_PENDING_PER_CHAT", 200),
+  maxNotesPerMinute: num("MAX_NOTES_PER_MINUTE", 20),
   dbPath: process.env.DB_PATH ?? "data/reminders.db",
   // Việt Nam = UTC+7, không có giờ mùa hè nên dùng offset cố định
   tzOffsetMin: num("TZ_OFFSET_MIN", 420),

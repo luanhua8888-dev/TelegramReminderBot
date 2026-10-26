@@ -42,6 +42,17 @@ Chưa bấm thì bot nhắc lại mỗi 15 phút, tối đa 6 lần. Mỗi sáng
 
 Lệnh: `/list`, `/today`, `/move 12 mai 10h`, `/done 12`, `/del 12`.
 
+## Cho người khác dùng (duyệt bởi host)
+
+Đặt `OWNER_CHAT_ID` (host) trong `.env`. Người mới nhắn bot → host nhận tin "X muốn dùng bot" với nút ✅ Duyệt / ❌ Từ chối.
+Được duyệt thì họ dùng ngay, mỗi người một danh sách việc riêng. Host quản lý bằng `/users`, `/approve <id>`, `/revoke <id>`.
+
+- `ALLOWED_CHAT_IDS`: những chat luôn được dùng, không cần duyệt.
+- Để trống cả hai biến = ai cũng dùng được.
+- Người không phải host bị giới hạn 200 việc chưa xong và 20 note/phút (`MAX_PENDING_PER_CHAT`, `MAX_NOTES_PER_MINUTE`).
+- Trong nhóm chat, bot chỉ nhận `/add`, không biến tin nhắn thường thành việc.
+- Bridge Zalo chỉ gửi về host.
+
 ## Tự xếp lịch và AI
 
 Thứ tự xử lý một note: **parser luật** (nhanh, có test) → nếu không thấy giờ và đã bật AI thì hỏi **AI** → vẫn không có giờ thì

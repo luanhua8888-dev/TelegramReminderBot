@@ -16,9 +16,28 @@ await bot.api.setMyCommands([
   { command: "move", description: "Dời giờ: /move 12 mai 10h" },
   { command: "done", description: "Xong: /done 12" },
   { command: "del", description: "Xoá: /del 12" },
-  { command: "zalo", description: "Kết nối Zalo (lấy mã QR)" },
   { command: "help", description: "Hướng dẫn" },
 ]);
+// Host thấy thêm các lệnh quản lý trong menu "/"
+if (config.ownerChatId) {
+  await bot.api
+    .setMyCommands(
+      [
+        { command: "list", description: "Việc chưa xong" },
+        { command: "today", description: "Việc hôm nay" },
+        { command: "move", description: "Dời giờ: /move 12 mai 10h" },
+        { command: "done", description: "Xong: /done 12" },
+        { command: "del", description: "Xoá: /del 12" },
+        { command: "users", description: "Người dùng và yêu cầu chờ duyệt" },
+        { command: "approve", description: "Duyệt: /approve <chat id>" },
+        { command: "revoke", description: "Thu hồi: /revoke <chat id>" },
+        { command: "zalo", description: "Kết nối Zalo (lấy mã QR)" },
+        { command: "help", description: "Hướng dẫn" },
+      ],
+      { scope: { type: "chat", chat_id: config.ownerChatId } },
+    )
+    .catch((err) => console.warn("[bot] không đặt được menu lệnh cho host:", err.message));
+}
 
 const stopScheduler = startScheduler(db, bot.api);
 
@@ -30,8 +49,8 @@ if (config.zalo.enabled) {
   }
 }
 
-if (!config.allowedChatIds.length) {
-  console.warn("⚠️  ALLOWED_CHAT_IDS đang trống: ai nhắn bot cũng dùng được. Nhắn /id cho bot rồi điền vào .env.");
+if (!config.ownerChatId && !config.allowedChatIds.length) {
+  console.warn("⚠️  Chưa có OWNER_CHAT_ID / ALLOWED_CHAT_IDS: ai nhắn bot cũng dùng được. Nhắn /id cho bot rồi điền vào .env.");
 }
 
 const shutdown = async () => {

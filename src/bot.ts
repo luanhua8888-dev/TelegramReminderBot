@@ -1,4 +1,5 @@
 import { Bot, type Context } from "grammy";
+import { accessMiddleware, isHost, registerHostCommands } from "./access.ts";
 import { config, llmEnabled } from "./config.ts";
 import type { Db } from "./db.ts";
 import { formatTask, escapeHtml, taskKeyboard, when, type AddResult, type TaskService } from "./tasks.ts";
@@ -22,34 +23,59 @@ Lệnh:
 /move 12 mai 10h – dời giờ #12
 /del 12 – xoá #12
 /id – xem chat id
-/zalo – lấy mã QR kết nối Zalo
 
-Đến giờ mà chưa bấm ✅ thì bot nhắc lại mỗi ${config.repeatEveryMin} phút (tối đa ${config.maxRepeats} lần).`;
+Đến giờ mà chưa bấm ✅ thì bot nhắc lại mỗi ${config.repeatEveryMin} phút (tối đa ${config.maxRepeats} lần).
+
+⚠️ Ghi chú được lưu trên máy của chủ bot. Đừng ghi thông tin nhạy cảm: tên bệnh nhân, số giấy tờ, mật khẩu...`;
+
+const HOST_HELP = `
+
+<b>Lệnh của chủ bot</b>
+/users – người dùng và yêu cầu chờ duyệt
+/approve 123 – duyệt chat id 123
+/revoke 123 – thu hồi quyền chat id 123
+/zalo – lấy mã QR kết nối Zalo`;
 
 export function createBot(db: Db, tasks: TaskService) {
   const bot = new Bot(config.telegramToken);
 
-  // Chỉ cho phép các chat trong ALLOWED_CHAT_IDS
-  bot.use(async (ctx, next) => {
-    const chatId = ctx.chat?.id;
-    if (chatId === undefined) return;
-    if (config.allowedChatIds.length && !config.allowedChatIds.includes(chatId)) {
-      if (ctx.message) await ctx.reply(`Bot riêng tư. Chat id của bạn: ${chatId}`);
-      return;
-    }
-    await next();
-  });
+  bot.use(accessMiddleware(db));
+  registerHostCommands(bot, db, HELP);
 
-  bot.command(["start", "help"], (ctx) => ctx.reply(HELP, { parse_mode: "HTML" }));
+  bot.command(["start", "help"], (ctx) => ctx.reply(HELP + (isHost(ctx.chat.id) ? HOST_HELP : ""), { parse_mode: "HTML" }));
   bot.command("id", (ctx) => ctx.reply(`Chat id: <code>${ctx.chat.id}</code>`, { parse_mode: "HTML" }));
 
-  bot.command("zalo", (ctx) =>
-    ctx.reply(config.zalo.enabled ? requestZaloLogin(tasks, bot.api) : "Bridge Zalo đang tắt (ZALO_ENABLED=0 trong .env)."),
-  );
+  bot.command("zalo", (ctx) => {
+    if (!isHost(ctx.chat.id)) return ctx.reply("Lệnh này chỉ dành cho chủ bot.");
+    return ctx.reply(config.zalo.enabled ? requestZaloLogin(tasks, bot.api) : "Bridge Zalo đang tắt (ZALO_ENABLED=0 trong .env).");
+  });
+
+  // Chống spam: giới hạn số việc chưa xong và số note mỗi phút (chủ bot không bị giới hạn)
+  const recent = new Map<number, number[]>();
+  function overLimit(chatId: number): string | null {
+    if (isHost(chatId)) return null;
+    if (db.countPending(chatId) >= config.maxPendingPerChat) {
+      return `Bạn đã có ${config.maxPendingPerChat} việc chưa xong. Xoá bớt (/list, /del) rồi ghi tiếp nhé.`;
+    }
+    const now = Date.now();
+    const times = (recent.get(chatId) ?? []).filter((t) => now - t < 60_000);
+    if (times.length >= config.maxNotesPerMinute) return "Bạn ghi nhanh quá, đợi một phút rồi thử lại nhé.";
+    times.push(now);
+    recent.set(chatId, times);
+    return null;
+  }
+
+  async function addNote(ctx: Context, text: string) {
+    const chatId = ctx.chat!.id;
+    const blocked = overLimit(chatId);
+    if (blocked) return ctx.reply(blocked);
+    await ctx.replyWithChatAction("typing");
+    await replyAdded(ctx, await tasks.add(chatId, text, "telegram"));
+  }
 
   bot.command("add", async (ctx) => {
     if (!ctx.match.trim()) return ctx.reply("Cú pháp: /add mai 9h gọi khách A");
-    await replyAdded(ctx, await tasks.add(ctx.chat.id, ctx.match, "telegram"));
+    await addNote(ctx, ctx.match);
   });
 
   bot.command("list", (ctx) => {
@@ -84,11 +110,11 @@ export function createBot(db: Db, tasks: TaskService) {
     return ctx.reply(at === null ? "Không hiểu thời gian hoặc không tìm thấy việc." : `📅 #${m[1]} → ${when(at)}`);
   });
 
-  // Tin nhắn thường = ghi note mới
+  // Tin nhắn thường = ghi note mới. Trong nhóm chỉ nhận /add, để không biến mọi câu chat thành việc
   bot.on("message:text", async (ctx) => {
+    if (ctx.chat.type !== "private") return;
     if (ctx.message.text.startsWith("/")) return ctx.reply("Lệnh không tồn tại. /help để xem hướng dẫn.");
-    await ctx.replyWithChatAction("typing");
-    await replyAdded(ctx, await tasks.add(ctx.chat.id, ctx.message.text, "telegram"));
+    await addNote(ctx, ctx.message.text);
   });
 
   bot.callbackQuery(/^(done|del|tmr|snz):(\d+)(?::(\w+))?$/, async (ctx) => {
