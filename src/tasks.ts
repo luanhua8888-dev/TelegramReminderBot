@@ -145,3 +145,23 @@ export function reminderKeyboard(id: number): InlineKeyboard {
     .text("🌙 Tối nay", `snz:${id}:tonight`)
     .text("📅 Mai", `tmr:${id}`);
 }
+
+
+/** Định dạng nội dung tin nhắn nhắc việc khi tới giờ */
+export function formatReminder(task: Task, maxRepeats = 6): string {
+  const isRepeat = task.remind_count > 0;
+  const last = task.remind_count + 1 >= maxRepeats;
+  const header = isRepeat ? `🔔 <b>Nhắc lại (lần ${task.remind_count + 1})</b>` : "🔔 <b>Đến giờ rồi!</b>";
+
+  const details: string[] = [];
+  if (task.due_at !== null) {
+    details.push(`⏰ Hẹn lúc: <b>${when(task.due_at)}</b>`);
+  }
+  if (task.created_at) {
+    details.push(`📝 Đặt lúc: <i>${when(task.created_at)}</i>`);
+  }
+  const meta = details.length ? `\n${details.join(" · ")}` : "";
+  const footer = last ? "\n\n<i>⚠️ Đây là lần nhắc cuối, bấm 📅 để dời nếu chưa làm.</i>" : "";
+
+  return `${header}${meta}\n\n<blockquote>${escapeHtml(task.text)}</blockquote>${footer}`;
+}

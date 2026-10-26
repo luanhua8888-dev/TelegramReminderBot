@@ -5,7 +5,7 @@ process.env.TELEGRAM_BOT_TOKEN ??= "test";
 process.env.LLM_MODEL = ""; // luôn dùng parser luật trong test
 process.env.AUTO_SCHEDULE = "0"; // tự xếp lịch được test riêng trong slot.test.ts
 const { openDb } = await import("../src/db.ts");
-const { createTaskService, renderProgressBar, formatTaskCard } = await import("../src/tasks.ts");
+const { createTaskService, renderProgressBar, formatTaskCard, formatReminder } = await import("../src/tasks.ts");
 const { DAY } = await import("../src/time.ts");
 
 const CHAT = 1;
@@ -107,4 +107,25 @@ test("db.getDailyStats đếm cả task quá hạn vào pendingToday", () => {
 
   const stats = db.getDailyStats(100, now - 10000, now + 10000);
   assert.equal(stats.pendingToday, 2);
+});
+
+
+test("formatReminder hiển thị rõ thời gian hẹn và thời gian đặt việc", () => {
+  const task = {
+    id: 42,
+    chat_id: 123,
+    text: "Uống thuốc đau đầu",
+    due_at: 1774843200000,
+    next_remind_at: 1774843200000,
+    remind_count: 0,
+    recurring: null,
+    status: "pending" as const,
+    source: "telegram",
+    created_at: 1774800000000,
+  };
+  const msg = formatReminder(task, 6);
+  assert.match(msg, /🔔 <b>Đến giờ rồi!<\/b>/);
+  assert.match(msg, /Hẹn lúc:/);
+  assert.match(msg, /Đặt lúc:/);
+  assert.match(msg, /<blockquote>Uống thuốc đau đầu<\/blockquote>/);
 });

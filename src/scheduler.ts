@@ -1,7 +1,7 @@
 import type { Api } from "grammy";
 import { config } from "./config.ts";
 import type { Db } from "./db.ts";
-import { escapeHtml, formatTaskCard, reminderKeyboard } from "./tasks.ts";
+import { escapeHtml, formatReminder, formatTaskCard, reminderKeyboard } from "./tasks.ts";
 import { DAY, startOfLocalDay, toLocal, toLocalIso } from "./time.ts";
 
 const TICK_MS = 30_000;
@@ -25,12 +25,10 @@ export function startScheduler(db: Db, api: Api): () => void {
   async function sendDueReminders() {
     const now = Date.now();
     for (const task of db.tasksToRemind(now)) {
-      const isRepeat = task.remind_count > 0;
       const last = task.remind_count + 1 >= config.maxRepeats;
-      const header = isRepeat ? `🔔 <b>Nhắc lại (lần ${task.remind_count + 1})</b>` : "🔔 <b>Đến giờ rồi!</b>";
-      const footer = last ? "\n<i>⚠️ Đây là lần nhắc cuối, bấm 📅 để dời nếu chưa làm.</i>" : "";
+      const msg = formatReminder(task, config.maxRepeats);
       try {
-        await api.sendMessage(task.chat_id, `${header}\n\n<blockquote>${escapeHtml(task.text)}</blockquote>${footer}`, {
+        await api.sendMessage(task.chat_id, msg, {
           parse_mode: "HTML",
           reply_markup: reminderKeyboard(task.id),
         });
