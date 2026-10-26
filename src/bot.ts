@@ -22,6 +22,13 @@ import {
   newsKeyboard,
   type NewsCategory,
 } from "./news.ts";
+import {
+  fetchAramChampion,
+  formatAramMessage,
+  isAramQuery,
+  aramKeyboard,
+  extractChampionFromQuery,
+} from "./aram.ts";
 import { checkSensitiveContent } from "./security.ts";
 import { transcribeAudio } from "./stt.ts";
 import {
@@ -55,6 +62,7 @@ Cứ gõ tin nhắn bình thường, ví dụ:
 • <code>mỗi ngày 7h tập thể dục</code>
 • <code>thời tiết bình thạnh hôm nay như nào?</code>
 • <code>tin tức hôm nay</code>
+• <code>/aram yasuo</code> (lõi & trang bị ARAM Hỗn Loạn)
 • <code>cuối tuần dọn nhà</code>${llmEnabled ? " (AI hiểu)" : ""}
 • <code>mua sữa</code> (không có giờ → ${config.autoSchedule ? "tự xếp vào khung trống" : "lưu vào inbox"})
 
@@ -66,6 +74,7 @@ Lệnh:
 /del 12 – xoá #12 (hoặc /del #12)
 /news – tin tức hot hôm nay (VnExpress)
 /tt [địa điểm] – dự báo thời tiết hôm nay
+/aram [tướng] – lõi & build ARAM Hỗn Loạn (PlayARAM.gg)
 /mu – tình trạng MU "Ra Hang" hay "Vô Hang"
 /farm – Nông trại vui vẻ (Trồng cây & Nuôi cá)
 /id – xem chat id
@@ -323,6 +332,32 @@ export function createBot(db: Db, tasks: TaskService) {
     return handleWeather(ctx, loc);
   });
 
+  async function handleAram(ctx: Context, championQuery = "yasuo") {
+    void ctx.replyWithChatAction("typing").catch(() => {});
+    try {
+      const data = await fetchAramChampion(championQuery);
+      return ctx.reply(formatAramMessage(data), {
+        parse_mode: "HTML",
+        link_preview_options: { is_disabled: true },
+        reply_markup: aramKeyboard(data.slug),
+      });
+    } catch (err) {
+      console.error("[aram]", err);
+      return ctx.reply(
+        `⚔️ Không tìm thấy dữ liệu cho tướng "<b>${escapeHtml(championQuery)}</b>" trên PlayARAM.gg.\n\nBạn thử gõ: <code>/aram yasuo</code>, <code>/aram yone</code>, <code>/aram leesin</code>, <code>/aram samira</code>, <code>/aram yi</code>...`,
+        {
+          parse_mode: "HTML",
+          reply_markup: aramKeyboard("yasuo"),
+        },
+      );
+    }
+  }
+
+  bot.command(["aram", "lol", "mayhem"], (ctx) => {
+    const champ = ctx.match.trim() || "yasuo";
+    return handleAram(ctx, champ);
+  });
+
   // Tin nhắn thường = ghi note mới hoặc tương tác menu. Trong nhóm chỉ nhận /add
   bot.on("message:text", async (ctx) => {
     if (ctx.chat.type !== "private") return;
@@ -377,6 +412,11 @@ export function createBot(db: Db, tasks: TaskService) {
     // Kiểm tra câu hỏi đọc tin tức hot hôm nay
     if (isNewsQuery(text)) {
       return handleNews(ctx, "hot");
+    }
+
+    // Kiểm tra câu hỏi tra cứu ARAM Hỗn Loạn / Lõi nâng cấp PlayARAM.gg
+    if (isAramQuery(text)) {
+      return handleAram(ctx, extractChampionFromQuery(text));
     }
 
     // Kiểm tra nếu đang chờ nhập giờ mới để dời việc
@@ -746,6 +786,21 @@ export function createBot(db: Db, tasks: TaskService) {
       });
     } catch {
       await ctx.answerCallbackQuery({ text: "Chưa lấy được thời tiết khu vực này!" }).catch(() => {});
+    }
+  });
+
+  bot.callbackQuery(/^aram:(.+)$/, async (ctx) => {
+    const slug = ctx.match[1];
+    await ctx.answerCallbackQuery().catch(() => {});
+    try {
+      const data = await fetchAramChampion(slug);
+      await ctx.editMessageText(formatAramMessage(data), {
+        parse_mode: "HTML",
+        link_preview_options: { is_disabled: true },
+        reply_markup: aramKeyboard(data.slug),
+      });
+    } catch {
+      await ctx.answerCallbackQuery({ text: "Chưa tải được dữ liệu tướng này!" }).catch(() => {});
     }
   });
 
