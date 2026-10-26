@@ -37,8 +37,8 @@ Gõ tin nhắn bình thường:
 | `gọi chị Mai` | "Mai" là tên người, không phải "ngày mai" |
 | `mua sữa` | không có giờ: tự xếp vào khung trống sớm nhất (tắt bằng `AUTO_SCHEDULE=0`) |
 
-Khi tới giờ, tin nhắc có các nút ✅ Xong · ⏰ +15p · ⏰ +1h · 🌙 Tối nay · 📅 Mai.
-Chưa bấm thì bot nhắc lại mỗi 15 phút, tối đa 6 lần. Mỗi sáng 7h bot gửi tóm tắt việc trong ngày kèm inbox.
+Khi tới giờ, tin nhắc có các nút ✅ Xong · ⏰ +15p · ⏰ +1h · 🌙 Tối nay · 📅 Mai · ✍️ Giờ khác.
+Chưa bấm thì bot nhắc lại mỗi 5 phút (tuỳ chỉnh qua `REPEAT_EVERY_MIN`), tối đa 6 lần. Mỗi sáng 7h bot gửi tóm tắt việc trong ngày kèm inbox.
 
 ### Bàn phím tiện ích (Menu Keyboard) & Lệnh
 Bot tích hợp bàn phím thường trực dưới khung chat:

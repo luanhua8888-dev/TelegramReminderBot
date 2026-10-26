@@ -133,7 +133,11 @@ export function formatTaskCard(t: Task, index?: number): string {
 }
 
 export function taskKeyboard(id: number): InlineKeyboard {
-  return new InlineKeyboard().text("✅ Xong", `done:${id}`).text("📅 Mai", `tmr:${id}`).text("🗑 Xoá", `del:${id}`);
+  return new InlineKeyboard()
+    .text("✅ Xong", `done:${id}`)
+    .text("📅 Mai", `tmr:${id}`)
+    .text("✍️ Giờ khác", `mv:${id}`)
+    .text("🗑 Xoá", `del:${id}`);
 }
 
 export function reminderKeyboard(id: number): InlineKeyboard {
@@ -143,7 +147,8 @@ export function reminderKeyboard(id: number): InlineKeyboard {
     .text("⏰ +1h", `snz:${id}:60`)
     .row()
     .text("🌙 Tối nay", `snz:${id}:tonight`)
-    .text("📅 Mai", `tmr:${id}`);
+    .text("📅 Mai", `tmr:${id}`)
+    .text("✍️ Giờ khác", `mv:${id}`);
 }
 
 

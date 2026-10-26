@@ -65,6 +65,9 @@ export function createBot(db: Db, tasks: TaskService) {
     return ctx.reply(config.zalo.enabled ? requestZaloLogin(tasks, bot.api) : "Bridge Zalo đang tắt (ZALO_ENABLED=0 trong .env).");
   });
 
+  // Trạng thái chờ người dùng nhập giờ mới cho việc cần dời: chatId -> taskId
+  const awaitingMove = new Map<number, number>();
+
   // Chống spam: giới hạn số việc chưa xong và số note mỗi phút (chủ bot không bị giới hạn)
   const recent = new Map<number, number[]>();
   function overLimit(chatId: number, record = true): string | null {
@@ -210,6 +213,12 @@ export function createBot(db: Db, tasks: TaskService) {
   bot.on("message:text", async (ctx) => {
     if (ctx.chat.type !== "private") return;
     const text = ctx.message.text.trim();
+
+    // Huỷ trạng thái dời việc nếu người dùng bấm menu hoặc lệnh khác
+    if (text.startsWith("/") || text.startsWith("📋") || text.startsWith("📥") || text.startsWith("📊") || text.startsWith("➕") || text.startsWith("❓")) {
+      awaitingMove.delete(ctx.chat.id);
+    }
+
     if (text.startsWith("/")) return ctx.reply("Lệnh không tồn tại. /help để xem hướng dẫn.");
 
     if (text === "📋 Việc hôm nay" || text === "📋 Hôm nay") return handleToday(ctx);
@@ -221,6 +230,32 @@ export function createBot(db: Db, tasks: TaskService) {
         parse_mode: "HTML",
         reply_markup: mainMenuKeyboard(),
       });
+    }
+
+    // Kiểm tra nếu đang chờ nhập giờ mới để dời việc
+    let moveTaskId = awaitingMove.get(ctx.chat.id);
+    if (!moveTaskId && ctx.message.reply_to_message?.text) {
+      const match = ctx.message.reply_to_message.text.match(/dời việc #(\d+)/i);
+      if (match) moveTaskId = Number(match[1]);
+    }
+
+    if (moveTaskId) {
+      const at = tasks.reschedule(moveTaskId, ctx.chat.id, text);
+      if (at !== null) {
+        awaitingMove.delete(ctx.chat.id);
+        return ctx.reply(`📅 Đã dời việc <b>#${moveTaskId}</b> sang <b>${when(at)}</b>`, {
+          parse_mode: "HTML",
+          reply_markup: mainMenuKeyboard(),
+        });
+      } else {
+        return ctx.reply(
+          `⚠️ Không hiểu mốc thời gian "<code>${escapeHtml(text)}</code>".\n\nBạn nhập lại nhé (ví dụ: <code>15h30</code>, <code>mai 9h</code>, <code>30p nữa</code>):`,
+          {
+            parse_mode: "HTML",
+            reply_markup: { force_reply: true, selective: true },
+          },
+        );
+      }
     }
 
     await addNote(ctx, text);
@@ -260,6 +295,25 @@ export function createBot(db: Db, tasks: TaskService) {
       if (!transcribed.trim()) {
         return ctx.reply("🎙 Không nhận diện được nội dung từ file ghi âm. Bạn nói lại rõ hơn nhé!");
       }
+
+      let moveTaskId = awaitingMove.get(ctx.chat.id);
+      if (moveTaskId) {
+        const at = tasks.reschedule(moveTaskId, ctx.chat.id, transcribed);
+        await ctx.reply(`🎙 <i>"${escapeHtml(transcribed)}"</i>`, { parse_mode: "HTML" });
+        if (at !== null) {
+          awaitingMove.delete(ctx.chat.id);
+          return ctx.reply(`📅 Đã dời việc <b>#${moveTaskId}</b> sang <b>${when(at)}</b>`, {
+            parse_mode: "HTML",
+            reply_markup: mainMenuKeyboard(),
+          });
+        } else {
+          return ctx.reply(
+            `⚠️ Không hiểu mốc thời gian "<code>${escapeHtml(transcribed)}</code>".\n\nBạn nói hoặc nhập lại nhé (ví dụ: <code>15h30</code>, <code>mai 9h</code>):`,
+            { parse_mode: "HTML", reply_markup: { force_reply: true, selective: true } },
+          );
+        }
+      }
+
       await ctx.reply(`🎙 <i>"${escapeHtml(transcribed)}"</i>`, { parse_mode: "HTML" });
       await addNote(ctx, transcribed);
     } catch (err) {
@@ -270,11 +324,23 @@ export function createBot(db: Db, tasks: TaskService) {
     }
   });
 
-  bot.callbackQuery(/^(done|del|tmr|snz):(\d+)(?::(\w+))?$/, async (ctx) => {
+  bot.callbackQuery(/^(done|del|tmr|snz|mv):(\d+)(?::(\w+))?$/, async (ctx) => {
     const [, action, idStr, arg] = ctx.match;
     const id = Number(idStr);
     const chatId = ctx.chat!.id;
     let text: string;
+
+    if (action === "mv") {
+      awaitingMove.set(chatId, id);
+      await ctx.answerCallbackQuery();
+      return ctx.reply(
+        `✍️ Bạn muốn dời việc <b>#${id}</b> sang lúc mấy giờ?\n\nHãy reply tin nhắn này hoặc gõ giờ mới (ví dụ: <code>15h</code>, <code>mai 9h</code>, <code>30p nữa</code>, <code>tối nay</code>)...`,
+        {
+          parse_mode: "HTML",
+          reply_markup: { force_reply: true, selective: true },
+        },
+      );
+    }
 
     if (action === "done") {
       const r = tasks.complete(id, chatId);

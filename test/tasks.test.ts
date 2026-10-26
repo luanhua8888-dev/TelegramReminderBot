@@ -129,3 +129,13 @@ test("formatReminder hiển thị rõ thời gian hẹn và thời gian đặt v
   assert.match(msg, /Đặt lúc:/);
   assert.match(msg, /<blockquote>Uống thuốc đau đầu<\/blockquote>/);
 });
+
+
+test("reminderKeyboard có nút '✍️ Giờ khác' (mv:id)", async () => {
+  const { reminderKeyboard } = await import("../src/tasks.ts");
+  const rKb = reminderKeyboard(123);
+  const allButtons = rKb.inline_keyboard.flat();
+  const mvBtn = allButtons.find((b) => "callback_data" in b && b.callback_data === "mv:123");
+  assert.ok(mvBtn, "Phải có nút callback_data mv:123");
+  assert.equal(mvBtn.text, "✍️ Giờ khác");
+});
