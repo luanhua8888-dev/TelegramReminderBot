@@ -1,0 +1,26 @@
+{
+  "name": "telegram-reminder-bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Bot Telegram ghi note nhanh + nhắc việc, có bridge Zalo và parser LLM",
+  "engines": {
+    "node": ">=23.6"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/index.ts",
+    "dev": "node --watch --env-file-if-exists=.env src/index.ts",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "grammy": "^1.46.0"
+  },
+  "optionalDependencies": {
+    "zca-js": "^2.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
