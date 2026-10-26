@@ -54,6 +54,15 @@ const HOST_HELP = `
 export function createBot(db: Db, tasks: TaskService) {
   const bot = new Bot(config.telegramToken);
 
+  // Chuẩn hoá lệnh viết hoa (/MU, /Mu, /TODAY, /DEL...) về chữ thường để người dùng gõ kiểu gì cũng nhận
+  bot.use((ctx, next) => {
+    if (ctx.message?.text?.startsWith("/")) {
+      const m = ctx.message.text.match(/^(\/[a-zA-Z0-9_]+)(.*)$/s);
+      if (m) ctx.message.text = m[1].toLowerCase() + m[2];
+    }
+    return next();
+  });
+
   bot.use(accessMiddleware(db));
   registerHostCommands(bot, db, HELP);
 

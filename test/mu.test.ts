@@ -58,6 +58,9 @@ test("parseMuData xác định đúng VÔ HANG khi MU thua", () => {
   assert.match(formatted, /VÔ HANG/);
   assert.match(formatted, /Bournemouth/);
   assert.match(formatted, /Chelsea/);
+  assert.match(formatted, /Giải đấu:/);
+  assert.match(formatted, /Khởi tranh:/);
+  assert.match(formatted, /Thứ Bảy/);
 });
 
 test("parseMuData xác định đúng RA HANG khi MU thắng", () => {

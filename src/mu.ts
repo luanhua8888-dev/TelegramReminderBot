@@ -164,7 +164,9 @@ export async function fetchMuStatus(forceRefresh = false): Promise<MuStatusResul
   }
 }
 
-/** Định dạng ngày giờ chuẩn hiển thị (giờ Việt Nam) */
+const DOW = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
+
+/** Định dạng ngày giờ chuẩn hiển thị (giờ Việt Nam UTC+7) */
 function formatMatchTime(isoStr: string): string {
   try {
     const date = new Date(isoStr);
@@ -173,10 +175,23 @@ function formatMatchTime(isoStr: string): string {
     const month = String(vnTime.mo).padStart(2, "0");
     const hour = String(vnTime.h).padStart(2, "0");
     const minute = String(vnTime.mi).padStart(2, "0");
-    return `${hour}:${minute} ngày ${day}/${month}`;
+    const dow = DOW[vnTime.dow];
+    return `${hour}:${minute} ${dow}, ${day}/${month}`;
   } catch {
     return isoStr;
   }
+}
+
+/** Đếm ngược thời gian tới trận */
+function formatCountdown(kickoffEpoch: number): string {
+  const diffMs = kickoffEpoch - Date.now();
+  if (diffMs <= 0) return "đang diễn ra hoặc đã kết thúc";
+  const diffDays = Math.floor(diffMs / (24 * 3600_000));
+  const diffHours = Math.floor((diffMs % (24 * 3600_000)) / 3600_000);
+  if (diffDays > 0) {
+    return `còn ${diffDays} ngày ${diffHours} giờ nữa`;
+  }
+  return `còn ${diffHours} giờ nữa`;
 }
 
 /** Soạn thông điệp Telegram vui nhộn và chi tiết về tình trạng Hang của MU */
@@ -203,18 +218,27 @@ export function formatMuMessage(status: MuStatusResult): string {
       ? `Manchester United <b>${lastMatch.muScore} - ${lastMatch.opponentScore}</b> ${lastMatch.opponentName}`
       : `${lastMatch.opponentName} <b>${lastMatch.opponentScore} - ${lastMatch.muScore}</b> Manchester United`;
 
-    const icon = lastMatch.winner === true ? "✅ Thắng" : lastMatch.winner === false ? "❌ Thua" : "🤝 Hòa";
+    const icon = lastMatch.winner === true
+      ? "✅ THẮNG 🟢 (RA HANG)"
+      : lastMatch.winner === false
+      ? "❌ THUA 🔴 (VÔ HANG)"
+      : "🤝 HÒA 🟡 (LẤP LÓ)";
 
-    lines.push(`<b>Trận gần nhất (${icon}):</b>`);
-    lines.push(`🏟 ${scoreStr}`);
-    lines.push(`🏆 ${lastMatch.competition} · 🕒 <i>${formatMatchTime(lastMatch.date)}</i>`);
+    lines.push(`<b>Trận vừa kết thúc:</b>`);
+    lines.push(`🏟 Tỉ số: ${scoreStr}`);
+    lines.push(`📊 Kết quả: <b>${icon}</b>`);
+    lines.push(`🏆 Giải đấu: <b>${lastMatch.competition}</b>`);
+    lines.push(`🕒 Lúc: <i>${formatMatchTime(lastMatch.date)}</i>`);
   }
 
   if (nextMatch) {
     const location = nextMatch.isHome ? "Sân nhà Old Trafford" : `Sân khách (${nextMatch.opponent})`;
-    lines.push(`\n<b>Trận tiếp theo:</b>`);
-    lines.push(`⚔️ <b>MU vs ${nextMatch.opponent}</b> (${location})`);
-    lines.push(`⏰ Khởi tranh: <b>${formatMatchTime(nextMatch.date)}</b>`);
+    const countdown = formatCountdown(nextMatch.kickoffEpoch);
+    lines.push(`\n<b>Trận sắp tới:</b>`);
+    lines.push(`⚔️ Cặp đấu: <b>MU vs ${nextMatch.opponent}</b> (${location})`);
+    lines.push(`🏆 Giải đấu: <b>${nextMatch.competition}</b>`);
+    lines.push(`⏰ Khởi tranh: <b>${formatMatchTime(nextMatch.date)}</b> (giờ VN)`);
+    lines.push(`⏳ Đếm ngược: <i>${countdown}</i>`);
   }
 
   return lines.join("\n");
