@@ -65,5 +65,9 @@ export const config = {
   },
 };
 
-export const llmEnabled = Boolean(config.llm.model && (config.llm.apiKey || !config.llm.baseUrl.includes("openai.com")));
-export const sttEnabled = Boolean(config.stt.apiKey || !config.stt.baseUrl.includes("openai.com"));
+function isLocalEndpoint(url: string): boolean {
+  return url.startsWith("http://") || url.includes("localhost") || url.includes("127.0.0.1");
+}
+
+export const llmEnabled = Boolean(config.llm.model && (config.llm.apiKey || isLocalEndpoint(config.llm.baseUrl)));
+export const sttEnabled = Boolean(config.stt.apiKey || isLocalEndpoint(config.stt.baseUrl));

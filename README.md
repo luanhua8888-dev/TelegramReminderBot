@@ -3,7 +3,9 @@
 Ghi note nhanh qua Telegram (hoặc Zalo), bot nhắc đúng giờ và **nhắc lại tới khi bấm ✅ Xong**.
 
 ```
-
+Zalo "#note ..." ──┐
+                   ▼
+Telegram (Text/Voice) ───► parser (LLM/STT/Luật) ───► SQLite ───► scheduler ───► Telegram 🔔
 ```
 
 ## Chạy trong 5 phút

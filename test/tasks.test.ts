@@ -96,3 +96,15 @@ test("db.getDailyStats đếm đúng task hoàn thành và tồn đọng hôm na
   assert.equal(stats.pendingToday, 1);
   assert.equal(stats.inbox, 1);
 });
+
+test("db.getDailyStats đếm cả task quá hạn vào pendingToday", () => {
+  const db = openDb(":memory:");
+  const now = Date.now();
+  // Task quá hạn từ hôm qua
+  db.addTask(100, "Việc hôm qua", now - 50000, null, "telegram");
+  // Task hôm nay
+  db.addTask(100, "Việc hôm nay", now + 5000, null, "telegram");
+
+  const stats = db.getDailyStats(100, now - 10000, now + 10000);
+  assert.equal(stats.pendingToday, 2);
+});

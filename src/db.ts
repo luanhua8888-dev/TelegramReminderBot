@@ -81,7 +81,7 @@ export function openDb(path: string) {
     dailyStats: db.prepare(`
       SELECT
         COALESCE(SUM(CASE WHEN status = 'done' AND due_at IS NOT NULL AND due_at >= ? AND due_at < ? THEN 1 ELSE 0 END), 0) AS doneToday,
-        COALESCE(SUM(CASE WHEN status = 'pending' AND due_at IS NOT NULL AND due_at >= ? AND due_at < ? THEN 1 ELSE 0 END), 0) AS pendingToday,
+        COALESCE(SUM(CASE WHEN status = 'pending' AND due_at IS NOT NULL AND due_at < ? THEN 1 ELSE 0 END), 0) AS pendingToday,
         COALESCE(SUM(CASE WHEN status = 'pending' AND due_at IS NULL THEN 1 ELSE 0 END), 0) AS inbox
       FROM tasks WHERE chat_id = ?
     `),
@@ -132,7 +132,7 @@ export function openDb(path: string) {
       return q.listUsers.all() as User[];
     },
     getDailyStats(chatId: number, startOfDay: number, endOfDay: number): DailyStats {
-      const row = q.dailyStats.get(startOfDay, endOfDay, startOfDay, endOfDay, chatId) as
+      const row = q.dailyStats.get(startOfDay, endOfDay, endOfDay, chatId) as
         | { doneToday: number; pendingToday: number; inbox: number }
         | undefined;
       return {

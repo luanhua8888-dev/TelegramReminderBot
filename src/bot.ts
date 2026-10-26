@@ -67,7 +67,7 @@ export function createBot(db: Db, tasks: TaskService) {
 
   // Chống spam: giới hạn số việc chưa xong và số note mỗi phút (chủ bot không bị giới hạn)
   const recent = new Map<number, number[]>();
-  function overLimit(chatId: number): string | null {
+  function overLimit(chatId: number, record = true): string | null {
     if (isHost(chatId)) return null;
     if (db.countPending(chatId) >= config.maxPendingPerChat) {
       return `Bạn đã có ${config.maxPendingPerChat} việc chưa xong. Xoá bớt (/list, /del) rồi ghi tiếp nhé.`;
@@ -75,8 +75,10 @@ export function createBot(db: Db, tasks: TaskService) {
     const now = Date.now();
     const times = (recent.get(chatId) ?? []).filter((t) => now - t < 60_000);
     if (times.length >= config.maxNotesPerMinute) return "Bạn ghi nhanh quá, đợi một phút rồi thử lại nhé.";
-    times.push(now);
-    recent.set(chatId, times);
+    if (record) {
+      times.push(now);
+      recent.set(chatId, times);
+    }
     return null;
   }
 
@@ -226,8 +228,9 @@ export function createBot(db: Db, tasks: TaskService) {
 
   // Nhận voice note hoặc file audio, chuyển thành text qua STT rồi tự động tạo nhắc việc
   bot.on(["message:voice", "message:audio"], async (ctx) => {
-    if (ctx.chat.type !== "private") return;
-    const blocked = overLimit(ctx.chat.id);
+    const isReplyToBot = ctx.message.reply_to_message?.from?.id === ctx.me.id;
+    if (ctx.chat.type !== "private" && !isReplyToBot) return;
+    const blocked = overLimit(ctx.chat.id, false);
     if (blocked) return ctx.reply(blocked);
 
     if (!sttEnabled) {
