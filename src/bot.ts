@@ -11,6 +11,7 @@ import {
   renderProgressBar,
   escapeHtml,
   taskKeyboard,
+  parseTaskId,
   when,
   type AddResult,
   type TaskService,
@@ -31,14 +32,14 @@ Cứ gõ tin nhắn bình thường, ví dụ:
 Lệnh:
 /list – việc chưa xong
 /today – việc hôm nay
-/done 12 – đánh dấu xong #12
-/move 12 mai 10h – dời giờ #12
-/del 12 – xoá #12
+/done 12 – đánh dấu xong #12 (hoặc /done #12)
+/move 12 mai 10h – dời giờ #12 (hoặc /move #12 mai 10h)
+/del 12 – xoá #12 (hoặc /del #12)
 /id – xem chat id
 
 Đến giờ mà chưa bấm ✅ thì bot nhắc lại mỗi ${config.repeatEveryMin} phút (tối đa ${config.maxRepeats} lần).
 
-⚠️ Ghi chú được lưu trên máy của chủ bot. Đừng ghi thông tin nhạy cảm: tên bệnh nhân, số giấy tờ, mật khẩu...`;
+⚠️ Ghi chú được lưu trên máy của chủ bot. Đừng ghi thông tin nhạy cảm: tên bệnh nhân, số giấy tờ, mật khẩu... (Bot có lớp bảo vệ tự động chặn thông tin tài chính và nội dung nhạy cảm).`;
 
 const HOST_HELP = `
 
@@ -195,23 +196,26 @@ export function createBot(db: Db, tasks: TaskService) {
   bot.command("inbox", (ctx) => handleInbox(ctx));
   bot.command(["stats", "status"], (ctx) => handleStats(ctx));
 
-  bot.command("done", (ctx) => {
-    const id = Number(ctx.match.trim());
+  bot.command(["done", "xong"], (ctx) => {
+    const id = parseTaskId(ctx.match);
+    if (id === null) return ctx.reply("Cú pháp: /done 12 (hoặc /done #12)");
     const r = tasks.complete(id, ctx.chat.id);
-    if (!r) return ctx.reply(`Không tìm thấy việc #${ctx.match.trim()} đang chờ.`);
+    if (!r) return ctx.reply(`Không tìm thấy việc #${id} đang chờ.`);
     return ctx.reply(doneMessage(r.task.text, r.nextDue), { parse_mode: "HTML" });
   });
 
-  bot.command("del", (ctx) => {
-    const id = Number(ctx.match.trim());
-    return ctx.reply(tasks.remove(id, ctx.chat.id) ? `🗑 Đã xoá #${id}` : `Không tìm thấy #${id}`);
+  bot.command(["del", "rm", "delete", "xoa"], (ctx) => {
+    const id = parseTaskId(ctx.match);
+    if (id === null) return ctx.reply("Cú pháp: /del 12 (hoặc /del #12)");
+    return ctx.reply(tasks.remove(id, ctx.chat.id) ? `🗑 Đã xoá #${id}` : `Không tìm thấy việc #${id}`);
   });
 
-  bot.command("move", (ctx) => {
-    const m = ctx.match.trim().match(/^(\d+)\s+(.+)$/);
-    if (!m) return ctx.reply("Cú pháp: /move 12 mai 10h");
-    const at = tasks.reschedule(Number(m[1]), ctx.chat.id, m[2]);
-    return ctx.reply(at === null ? "Không hiểu thời gian hoặc không tìm thấy việc." : `📅 #${m[1]} → ${when(at)}`);
+  bot.command(["move", "doi"], (ctx) => {
+    const m = ctx.match.trim().match(/^#?\s*(\d+)\s+(.+)$/);
+    if (!m) return ctx.reply("Cú pháp: /move 12 mai 10h (hoặc /move #12 mai 10h)");
+    const id = Number(m[1]);
+    const at = tasks.reschedule(id, ctx.chat.id, m[2]);
+    return ctx.reply(at === null ? "Không hiểu thời gian hoặc không tìm thấy việc." : `📅 #${id} → ${when(at)}`);
   });
 
   // Tin nhắn thường = ghi note mới hoặc tương tác menu. Trong nhóm chỉ nhận /add
@@ -235,6 +239,20 @@ export function createBot(db: Db, tasks: TaskService) {
         parse_mode: "HTML",
         reply_markup: mainMenuKeyboard(),
       });
+    }
+
+    // Hỗ trợ lệnh nhanh: "xóa #2", "del #2", "xóa 2", "xong #2", "done 2"
+    const quickDel = text.match(/^(?:del|x[oóòỏõọ]a|rm)\s+#?\s*(\d+)$/i);
+    if (quickDel) {
+      const id = Number(quickDel[1]);
+      return ctx.reply(tasks.remove(id, ctx.chat.id) ? `🗑 Đã xoá #${id}` : `Không tìm thấy việc #${id}`);
+    }
+    const quickDone = text.match(/^(?:done|xong)\s+#?\s*(\d+)$/i);
+    if (quickDone) {
+      const id = Number(quickDone[1]);
+      const r = tasks.complete(id, ctx.chat.id);
+      if (!r) return ctx.reply(`Không tìm thấy việc #${id} đang chờ.`);
+      return ctx.reply(doneMessage(r.task.text, r.nextDue), { parse_mode: "HTML" });
     }
 
     // Kiểm tra nếu đang chờ nhập giờ mới để dời việc

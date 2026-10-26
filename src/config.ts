@@ -32,7 +32,7 @@ export const config = {
   tzOffsetMin: num("TZ_OFFSET_MIN", 420),
   // Chưa bấm "Xong" thì nhắc lại sau bao nhiêu phút, tối đa bao nhiêu lần
   repeatEveryMin: num("REPEAT_EVERY_MIN", 5),
-  maxRepeats: num("MAX_REPEATS", 6),
+  maxRepeats: num("MAX_REPEATS", 3),
   // Giờ gửi bản tóm tắt việc trong ngày (-1 để tắt)
   digestHour: num("DIGEST_HOUR", 7),
   // Giờ mặc định khi chỉ nói ngày mà không nói giờ

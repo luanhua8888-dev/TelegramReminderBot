@@ -5,7 +5,7 @@ process.env.TELEGRAM_BOT_TOKEN ??= "test";
 process.env.LLM_MODEL = ""; // luôn dùng parser luật trong test
 process.env.AUTO_SCHEDULE = "0"; // tự xếp lịch được test riêng trong slot.test.ts
 const { openDb } = await import("../src/db.ts");
-const { createTaskService, renderProgressBar, formatTaskCard, formatReminder } = await import("../src/tasks.ts");
+const { createTaskService, renderProgressBar, formatTaskCard, formatReminder, parseTaskId } = await import("../src/tasks.ts");
 const { DAY } = await import("../src/time.ts");
 
 const CHAT = 1;
@@ -175,4 +175,55 @@ test("formatGroupedTasks phân nhóm rõ ràng Quá hạn và Sắp tới", asyn
   assert.match(formatted, /Việc trễ/);
   assert.match(formatted, /HÔM NAY/);
   assert.match(formatted, /Việc chiều nay/);
+});
+
+test("parseTaskId phân tích chính xác #2, # 2, 2 và từ chối chuỗi không hợp lệ", () => {
+  assert.equal(parseTaskId("#2"), 2);
+  assert.equal(parseTaskId("# 2"), 2);
+  assert.equal(parseTaskId("2"), 2);
+  assert.equal(parseTaskId("  #42  "), 42);
+  assert.equal(parseTaskId(""), null);
+  assert.equal(parseTaskId("#"), null);
+  assert.equal(parseTaskId("abc"), null);
+  assert.equal(parseTaskId("-1"), null);
+  assert.equal(parseTaskId("0"), null);
+});
+
+test("formatReminder với maxRepeats = 3 hiển thị đúng tiến độ nhắc lại và cảnh báo lần cuối", () => {
+  const task = {
+    id: 2,
+    chat_id: 123,
+    text: "Họp phòng ban",
+    due_at: Date.now(),
+    next_remind_at: Date.now(),
+    remind_count: 1, // Lần nhắc lại thứ 2
+    recurring: null,
+    status: "pending" as const,
+    source: "telegram",
+    created_at: Date.now() - 3600_000,
+  };
+  const msg2 = formatReminder(task, 3);
+  assert.match(msg2, /Nhắc lại \(lần 2\/3\)/);
+  assert.doesNotMatch(msg2, /lần nhắc cuối/);
+
+  // Lần nhắc thứ 3 (cuối cùng)
+  task.remind_count = 2;
+  const msg3 = formatReminder(task, 3);
+  assert.match(msg3, /Nhắc lại \(lần 3\/3\)/);
+  assert.match(msg3, /lần nhắc cuối/);
+});
+
+test("xóa việc thành công khi dùng mã ID có tiền tố # (ví dụ /del #2)", async () => {
+  const db = openDb(":memory:");
+  const tasks = createTaskService(db);
+  const { task } = await tasks.add(CHAT, "mua hoa quả", "telegram");
+  assert.equal(task.id, 1);
+
+  // Parse id từ "#1"
+  const parsedId = parseTaskId("#1");
+  assert.equal(parsedId, 1);
+
+  const deleted = tasks.remove(parsedId!, CHAT);
+  assert.equal(deleted, true);
+  assert.equal(db.pendingTasks(CHAT).length, 0);
 });

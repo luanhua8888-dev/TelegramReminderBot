@@ -154,12 +154,23 @@ export function reminderKeyboard(id: number): InlineKeyboard {
 }
 
 
+/**
+ * Phân tích mã ID công việc từ chuỗi người dùng nhập (hỗ trợ '#2', '# 2', '2').
+ * Trả về number hợp lệ hoặc null nếu không hợp lệ.
+ */
+export function parseTaskId(input: string): number | null {
+  if (!input || typeof input !== "string") return null;
+  const raw = input.trim().replace(/^#\s*/, "");
+  const id = Number(raw);
+  return !raw || isNaN(id) || id <= 0 ? null : id;
+}
+
 /** Định dạng nội dung tin nhắn nhắc việc khi tới giờ */
-export function formatReminder(task: Task, maxRepeats = 6): string {
+export function formatReminder(task: Task, maxRepeats = 3): string {
   const isRepeat = task.remind_count > 0;
   const last = task.remind_count + 1 >= maxRepeats;
   const header = isRepeat
-    ? `🔔 <b>[Việc #${task.id}] · Nhắc lại (lần ${task.remind_count + 1})</b>`
+    ? `🔔 <b>[Việc #${task.id}] · Nhắc lại (lần ${task.remind_count + 1}/${maxRepeats})</b>`
     : `🔔 <b>[Việc #${task.id}] · Đến giờ rồi!</b>`;
 
   const details: string[] = [];
@@ -170,7 +181,7 @@ export function formatReminder(task: Task, maxRepeats = 6): string {
     details.push(`📝 Đặt lúc: <i>${when(task.created_at)}</i>`);
   }
   const meta = details.length ? `\n${details.join(" · ")}` : "";
-  const footer = last ? "\n\n<i>⚠️ Đây là lần nhắc cuối, bấm 📅 để dời nếu chưa làm.</i>" : "";
+  const footer = last ? "\n\n<i>⚠️ Đây là lần nhắc cuối, bấm 📅 hoặc ✍️ để dời nếu chưa làm.</i>" : "";
 
   return `${header}${meta}\n\n<blockquote>${escapeHtml(task.text)}</blockquote>${footer}`;
 }
