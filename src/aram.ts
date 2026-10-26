@@ -1,4 +1,5 @@
 import { InlineKeyboard } from "grammy";
+import sharp from "sharp";
 
 export interface AugmentInfo {
   name: string;
@@ -157,6 +158,9 @@ const COMMON_CHAMPION_MAP: Record<string, string> = {
   "dr. mundo": "drmundo",
   "dr mundo": "drmundo",
   mundo: "drmundo",
+  maokai: "maokai",
+  "cây": "maokai",
+  "cay": "maokai",
 };
 
 const SUMMONER_SPELLS = new Set([
@@ -259,13 +263,13 @@ export function parsePlayAramHtml(html: string, slug: string): AramChampionData 
   const goldAugments = extractAugments("Lõi Vàng");
   const silverAugments = extractAugments("Lõi Bạc");
 
-  // 2. Tách bộ trang bị (Build panel 0 & 1)
+  // 2. Tách bộ trang bị (Tất cả các panels build)
   const builds: BuildInfo[] = [];
   const panelBoots: BuildItem[] = [];
   const panelSpells: string[] = [];
   const buildPanels = [...html.matchAll(/id="build-panel-\d+"[^>]*>([\s\S]*?)(?=<div[^>]*id="build-panel|\s*<\/section>|\s*<section|$)/g)];
 
-  for (const panelMatch of buildPanels.slice(0, 2)) {
+  for (const panelMatch of buildPanels.slice(0, 3)) {
     const pContent = panelMatch[1];
     const bNameMatch = pContent.match(/<h3 class="bt-panel__name">([\s\S]*?)<\/h3>/i);
     const wrMatch = pContent.match(/class="sp-stat bt-kpi bt-kpi--wr">([\s\S]*?)<\/span>/i);
@@ -352,121 +356,154 @@ export async function fetchAramChampion(query: string): Promise<AramChampionData
   return parsePlayAramHtml(html, slug);
 }
 
-function formatItemLine(item: BuildItem, prefix = "• "): string {
-  const linkText = item.imgUrl
-    ? `<a href="${item.imgUrl}"><b>${escapeHtml(item.name)}</b></a>`
-    : `<b>${escapeHtml(item.name)}</b>`;
+// In-memory cache cho ảnh ghép trang bị
+const BANNER_CACHE = new Map<string, Buffer>();
 
-  const tagParts: string[] = [];
-  if (item.enName || item.nick) {
-    tagParts.push(`<i>${escapeHtml(item.nick || item.enName!)}</i>`);
-  }
-  if (item.visual) {
-    tagParts.push(escapeHtml(item.visual));
+/** Ghép các icon trang bị thành 1 ảnh ngang (Build Banner) */
+export async function generateBuildBanner(itemUrls: string[]): Promise<Buffer | null> {
+  const validUrls = itemUrls.filter((u) => u && u.startsWith("http"));
+  if (validUrls.length === 0) return null;
+
+  const cacheKey = validUrls.join("|");
+  if (BANNER_CACHE.has(cacheKey)) {
+    return BANNER_CACHE.get(cacheKey)!;
   }
 
-  const tags = tagParts.length > 0 ? ` [${tagParts.join(" · ")}]` : "";
-  return `${prefix}${linkText}${tags}`;
+  try {
+    const iconSize = 72;
+    const gap = 12;
+    const paddingX = 16;
+    const paddingY = 16;
+    const totalWidth = paddingX * 2 + validUrls.length * iconSize + (validUrls.length - 1) * gap;
+    const totalHeight = paddingY * 2 + iconSize;
+
+    const composites: Array<{ input: Buffer; left: number; top: number }> = [];
+
+    // Tải song song tất cả các icon
+    const buffers = await Promise.all(
+      validUrls.map(async (url) => {
+        try {
+          const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+          if (!res.ok) return null;
+          return Buffer.from(await res.arrayBuffer());
+        } catch {
+          return null;
+        }
+      }),
+    );
+
+    for (let i = 0; i < validUrls.length; i++) {
+      const rawBuf = buffers[i];
+      if (!rawBuf) continue;
+      const resized = await sharp(rawBuf).resize(iconSize, iconSize).toBuffer();
+      const left = paddingX + i * (iconSize + gap);
+      const top = paddingY;
+      composites.push({ input: resized, left, top });
+    }
+
+    if (composites.length === 0) return null;
+
+    const base = sharp({
+      create: {
+        width: totalWidth,
+        height: totalHeight,
+        channels: 4,
+        background: { r: 15, g: 23, b: 36, alpha: 1 },
+      },
+    });
+
+    const finalBuffer = await base.composite(composites).png().toBuffer();
+    if (BANNER_CACHE.size > 50) BANNER_CACHE.clear();
+    BANNER_CACHE.set(cacheKey, finalBuffer);
+    return finalBuffer;
+  } catch (err) {
+    console.error("[aram-banner]", err);
+    return null;
+  }
 }
 
-/** Định dạng dữ liệu ARAM thành tin nhắn Telegram HTML sinh động kèm nhận diện hình ảnh */
-export function formatAramMessage(d: AramChampionData): string {
+/** Định dạng nội dung tóm tắt hiển thị kèm ẢNH trong Telegram (dưới 1024 ký tự) */
+export function formatAramCaption(d: AramChampionData, activeBuildIdx = 0): string {
+  const b = d.builds[activeBuildIdx] || d.builds[0];
   const lines: string[] = [
-    `⚔️ <b>ARAM HỖN LOẠN – ${escapeHtml(d.championName.toUpperCase())}</b>`,
-    `<i>Dữ liệu meta chuẩn theo PlayARAM.gg</i>`,
+    `⚔️ <b>ARAM HỖN LOẠN – ${escapeHtml(d.championName.toUpperCase())}</b> · <b>${escapeHtml(b ? b.name : "Tiêu Chuẩn")}</b>`,
+    `<i>Dữ liệu meta PlayARAM.gg${b?.winRate ? ` · Thắng: ${b.winRate}` : ""}</i>`,
     "",
   ];
 
-  // Lõi nâng cấp
-  lines.push("🌟 <b>LÕI NÂNG CẤP TỐI ƯU NHẤT:</b>");
-  if (d.prismaticAugments.length > 0) {
-    const list = d.prismaticAugments
-      .map((a) => {
-        const hint = a.visualDesc ? `\n   ↳ <i>${escapeHtml(a.visualDesc)}</i>` : "";
-        return `• <b>${escapeHtml(a.name)}</b> <i>(${a.winRate} win)</i>${hint}`;
-      })
-      .join("\n");
-    lines.push(`💎 <b>Lõi Kim Cương:</b>\n${list}`);
-  }
-  if (d.goldAugments.length > 0) {
-    const list = d.goldAugments
-      .map((a) => {
-        const hint = a.visualDesc ? `\n   ↳ <i>${escapeHtml(a.visualDesc)}</i>` : "";
-        return `• <b>${escapeHtml(a.name)}</b> <i>(${a.winRate} win)</i>${hint}`;
-      })
-      .join("\n");
-    lines.push(`🥇 <b>Lõi Vàng:</b>\n${list}`);
-  }
-  if (d.silverAugments.length > 0) {
-    const list = d.silverAugments
-      .map((a) => {
-        const hint = a.visualDesc ? `\n   ↳ <i>${escapeHtml(a.visualDesc)}</i>` : "";
-        return `• <b>${escapeHtml(a.name)}</b> <i>(${a.winRate} win)</i>${hint}`;
-      })
-      .join("\n");
-    lines.push(`🥈 <b>Lõi Bạc:</b>\n${list}`);
-  }
-
-  // Lối chơi & combo bá đạo
-  if (d.combos.length > 0) {
-    lines.push("");
-    lines.push("🔥 <b>LỐI CHƠI ĐỘC BẢN & COMBO LÕI:</b>");
-    for (const c of d.combos.slice(0, 1)) {
-      lines.push(`<blockquote><b>${escapeHtml(c.title)}</b>\n${escapeHtml(c.desc)}</blockquote>`);
-    }
-  }
-
-  // Bộ trang bị
-  if (d.builds.length > 0) {
-    lines.push("");
-    lines.push("🛡 <b>BUILD TRANG BỊ ĐỀ XUẤT (KÈM NHẬN DIỆN ITEM):</b>");
-    lines.push("<i>(Bấm vào tên từng món để xem ảnh icon; chữ nghiêng là tên gõ tắt tìm trong shop in-game)</i>");
-
-    d.builds.slice(0, 2).forEach((b, bIdx) => {
-      const wrBadge = b.winRate ? ` <i>(Tỉ lệ thắng: ${b.winRate})</i>` : "";
-      const headerTitle = d.builds.length > 1 ? `\n📌 <b>Hướng ${bIdx + 1}: ${escapeHtml(b.name)}</b>${wrBadge}` : `\n<b>${escapeHtml(b.name)}</b>${wrBadge}`;
-      lines.push(headerTitle);
-
-      if (b.items.length >= 2) {
-        lines.push("• <b>Cốt lõi:</b> " + formatItemLine(b.items[0], "") + " + " + formatItemLine(b.items[1], ""));
-        const rest = b.items.slice(2);
-        if (rest.length > 0) {
-          lines.push("• <b>Món tiếp theo:</b> " + rest.map((item) => formatItemLine(item, "")).join(" · "));
-        }
-      } else if (b.items.length > 0) {
-        lines.push("• <b>Trang bị:</b> " + b.items.map((item) => formatItemLine(item, "")).join(" · "));
-      }
+  if (b && b.items.length > 0) {
+    lines.push("🛡 <b>CÁC MÓN TRONG HÌNH (TRÁI QUA PHẢI):</b>");
+    b.items.forEach((item, idx) => {
+      const tag = item.nick || item.enName ? ` [<i>${escapeHtml(item.nick || item.enName!)}</i>]` : "";
+      lines.push(`${idx + 1}. <b>${escapeHtml(item.name)}</b>${tag}`);
     });
+    lines.push("");
   }
 
-  // Giày & Phép bổ trợ
+  // Giày & Phép
   if (d.boots && d.boots.length > 0) {
-    lines.push("");
-    lines.push("<b>Giày ưu tiên:</b>");
-    d.boots.forEach((boot) => lines.push(formatItemLine(boot, "👢 ")));
+    lines.push(`👢 <b>Giày:</b> ${d.boots.map((boot) => `<b>${escapeHtml(boot.name)}</b>`).join(" / ")}`);
   }
   if (d.spells && d.spells.length > 0) {
-    lines.push(`⚡ <b>Phép bổ trợ:</b> ${d.spells.map((s) => `<b>${escapeHtml(s)}</b>`).join(" | ")}`);
+    lines.push(`⚡ <b>Phép:</b> ${d.spells.map((s) => `<b>${escapeHtml(s)}</b>`).join(" | ")}`);
   }
 
   lines.push("");
-  lines.push(`🔗 <a href="${d.url}"><b>Bấm đây để xem đầy đủ ảnh Icon và biểu đồ trên PlayARAM.gg</b></a>`);
+  lines.push("🌟 <b>LÕI NÂNG CẤP KHUYÊN DÙNG:</b>");
+  if (d.prismaticAugments[0]) {
+    lines.push(`💎 Lõi Kim Cương: <b>${escapeHtml(d.prismaticAugments[0].name)}</b> <i>(${d.prismaticAugments[0].winRate})</i>`);
+  }
+  if (d.goldAugments[0]) {
+    lines.push(`🥇 Lõi Vàng: <b>${escapeHtml(d.goldAugments[0].name)}</b> <i>(${d.goldAugments[0].winRate})</i>`);
+  }
+  if (d.silverAugments[0]) {
+    lines.push(`🥈 Lõi Bạc: <b>${escapeHtml(d.silverAugments[0].name)}</b> <i>(${d.silverAugments[0].winRate})</i>`);
+  }
+
+  if (d.combos.length > 0) {
+    lines.push("");
+    const combo = d.combos[0];
+    const shortDesc = combo.desc.length > 150 ? `${combo.desc.slice(0, 147)}...` : combo.desc;
+    lines.push(`<blockquote><b>${escapeHtml(combo.title)}</b>\n<i>${escapeHtml(shortDesc)}</i></blockquote>`);
+  }
 
   return lines.join("\n");
 }
 
-/** Tạo bàn phím Inline cho lệnh ARAM */
-export function aramKeyboard(currentSlug = "yasuo"): InlineKeyboard {
-  return new InlineKeyboard()
-    .url("🌐 Mở PlayARAM.gg (Có đầy đủ ảnh icon)", `https://playaram.gg/tuong/${currentSlug}`)
-    .row()
-    .text("🌪 Yasuo", "aram:yasuo")
+/** Định dạng dữ liệu ARAM đầy đủ dạng văn bản */
+export function formatAramMessage(d: AramChampionData): string {
+  return formatAramCaption(d, 0);
+}
+
+/** Tạo bàn phím Inline cho lệnh ARAM, có các nút chuyển giữa các hướng build */
+export function aramKeyboard(
+  currentSlug = "yasuo",
+  builds: BuildInfo[] = [],
+  activeBuildIdx = 0,
+): InlineKeyboard {
+  const kb = new InlineKeyboard();
+
+  // Nút chuyển hướng Build (nếu tướng có từ 2 hướng build trở lên)
+  if (builds.length > 1) {
+    builds.slice(0, 3).forEach((b, idx) => {
+      const shortName = b.name.split("·")[0]?.trim() || b.name.slice(0, 12);
+      const label = idx === activeBuildIdx ? `• ⚔️ ${shortName} •` : shortName;
+      kb.text(label, `aram:build:${currentSlug}:${idx}`);
+    });
+    kb.row();
+  }
+
+  kb.text("🌪 Yasuo", "aram:yasuo")
     .text("⚔️ Yone", "aram:yone")
     .text("🥊 Lee Sin", "aram:leesin")
     .row()
+    .text("🌲 Maokai", "aram:maokai")
     .text("🗡️ Master Yi", "aram:masteryi")
     .text("🔫 Samira", "aram:samira")
-    .text("🔄 Làm mới", `aram:${currentSlug}`);
+    .row()
+    .url("🌐 Mở chi tiết trên PlayARAM.gg", `https://playaram.gg/tuong/${currentSlug}`);
+
+  return kb;
 }
 
 /** Nhận diện câu hỏi liên quan đến ARAM Mayhem / Lõi nâng cấp */
@@ -477,6 +514,7 @@ export function isAramQuery(text: string): boolean {
   if (/\b(?:aram|playaram)\b/i.test(norm)) return true;
   if (/lõi\s+(?:cho|nâng\s*cấp\s*cho)?\s+[a-zà-ỹ0-9]+/i.test(norm)) return true;
   if (/build\s+[a-zà-ỹ0-9]+\s+aram/i.test(norm)) return true;
+  if (/(?:hướng|danh|đánh)\s+(?:ap|tank|ad)\s+[a-zà-ỹ0-9]+/i.test(norm)) return true;
 
   return false;
 }

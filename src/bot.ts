@@ -1,4 +1,4 @@
-import { Bot, Keyboard, type Context } from "grammy";
+import { Bot, Keyboard, InputFile, type Context } from "grammy";
 import { accessMiddleware, isHost, registerHostCommands } from "./access.ts";
 import { config, llmEnabled, sttEnabled } from "./config.ts";
 import type { Db } from "./db.ts";
@@ -24,7 +24,8 @@ import {
 } from "./news.ts";
 import {
   fetchAramChampion,
-  formatAramMessage,
+  formatAramCaption,
+  generateBuildBanner,
   isAramQuery,
   aramKeyboard,
   extractChampionFromQuery,
@@ -332,19 +333,44 @@ export function createBot(db: Db, tasks: TaskService) {
     return handleWeather(ctx, loc);
   });
 
-  async function handleAram(ctx: Context, championQuery = "yasuo") {
-    void ctx.replyWithChatAction("typing").catch(() => {});
+  async function handleAram(ctx: Context, championQuery = "yasuo", buildIdx = 0) {
+    void ctx.replyWithChatAction("upload_photo").catch(() => {});
     try {
       const data = await fetchAramChampion(championQuery);
-      return ctx.reply(formatAramMessage(data), {
-        parse_mode: "HTML",
-        link_preview_options: { is_disabled: true },
-        reply_markup: aramKeyboard(data.slug),
-      });
+
+      // Tự động nhận diện hướng build theo từ khóa nếu có (ví dụ "maokai ap" -> chọn build phép)
+      let activeIdx = buildIdx;
+      const lowerQuery = championQuery.toLowerCase();
+      if (lowerQuery.includes("ap") || lowerQuery.includes("phep") || lowerQuery.includes("phép")) {
+        const found = data.builds.findIndex((b) => b.name.toLowerCase().includes("phép") || b.name.toLowerCase().includes("đuốc") || b.name.toLowerCase().includes("đốt"));
+        if (found !== -1) activeIdx = found;
+      } else if (lowerQuery.includes("tank") || lowerQuery.includes("do don") || lowerQuery.includes("đỡ đòn")) {
+        const found = data.builds.findIndex((b) => b.name.toLowerCase().includes("đỡ đòn") || b.name.toLowerCase().includes("giáp") || b.name.toLowerCase().includes("tank"));
+        if (found !== -1) activeIdx = found;
+      }
+
+      const activeBuild = data.builds[activeIdx] || data.builds[0];
+      const itemUrls = (activeBuild?.items || []).map((i) => i.imgUrl).filter(Boolean) as string[];
+      const banner = await generateBuildBanner(itemUrls);
+      const caption = formatAramCaption(data, activeIdx);
+      const replyMarkup = aramKeyboard(data.slug, data.builds, activeIdx);
+
+      if (banner) {
+        return ctx.replyWithPhoto(new InputFile(banner, "build.png"), {
+          caption,
+          parse_mode: "HTML",
+          reply_markup: replyMarkup,
+        });
+      } else {
+        return ctx.reply(caption, {
+          parse_mode: "HTML",
+          reply_markup: replyMarkup,
+        });
+      }
     } catch (err) {
       console.error("[aram]", err);
       return ctx.reply(
-        `⚔️ Không tìm thấy dữ liệu cho tướng "<b>${escapeHtml(championQuery)}</b>" trên PlayARAM.gg.\n\nBạn thử gõ: <code>/aram yasuo</code>, <code>/aram yone</code>, <code>/aram leesin</code>, <code>/aram samira</code>, <code>/aram yi</code>...`,
+        `⚔️ Không tìm thấy dữ liệu cho tướng "<b>${escapeHtml(championQuery)}</b>" trên PlayARAM.gg.\n\nBạn thử gõ: <code>/aram yasuo</code>, <code>/aram maokai</code>, <code>/aram yone</code>, <code>/aram leesin</code>, <code>/aram samira</code>, <code>/aram yi</code>...`,
         {
           parse_mode: "HTML",
           reply_markup: aramKeyboard("yasuo"),
@@ -789,16 +815,68 @@ export function createBot(db: Db, tasks: TaskService) {
     }
   });
 
-  bot.callbackQuery(/^aram:(.+)$/, async (ctx) => {
+  bot.callbackQuery(/^aram:build:([a-z0-9]+):(\d+)$/, async (ctx) => {
+    const slug = ctx.match[1];
+    const buildIdx = Number(ctx.match[2]);
+    await ctx.answerCallbackQuery().catch(() => {});
+    try {
+      const data = await fetchAramChampion(slug);
+      const activeBuild = data.builds[buildIdx] || data.builds[0];
+      const itemUrls = (activeBuild?.items || []).map((i) => i.imgUrl).filter(Boolean) as string[];
+      const banner = await generateBuildBanner(itemUrls);
+      const caption = formatAramCaption(data, buildIdx);
+      const replyMarkup = aramKeyboard(data.slug, data.builds, buildIdx);
+
+      if (banner && ctx.callbackQuery.message?.photo) {
+        await ctx.editMessageMedia(
+          {
+            type: "photo",
+            media: new InputFile(banner, "build.png"),
+            caption,
+            parse_mode: "HTML",
+          },
+          { reply_markup: replyMarkup },
+        );
+      } else {
+        await ctx.editMessageCaption({
+          caption,
+          parse_mode: "HTML",
+          reply_markup: replyMarkup,
+        });
+      }
+    } catch {
+      await ctx.answerCallbackQuery({ text: "Chưa đổi được hướng build này!" }).catch(() => {});
+    }
+  });
+
+  bot.callbackQuery(/^aram:([a-z0-9]+)$/, async (ctx) => {
     const slug = ctx.match[1];
     await ctx.answerCallbackQuery().catch(() => {});
     try {
       const data = await fetchAramChampion(slug);
-      await ctx.editMessageText(formatAramMessage(data), {
-        parse_mode: "HTML",
-        link_preview_options: { is_disabled: true },
-        reply_markup: aramKeyboard(data.slug),
-      });
+      const activeBuild = data.builds[0];
+      const itemUrls = (activeBuild?.items || []).map((i) => i.imgUrl).filter(Boolean) as string[];
+      const banner = await generateBuildBanner(itemUrls);
+      const caption = formatAramCaption(data, 0);
+      const replyMarkup = aramKeyboard(data.slug, data.builds, 0);
+
+      if (banner && ctx.callbackQuery.message?.photo) {
+        await ctx.editMessageMedia(
+          {
+            type: "photo",
+            media: new InputFile(banner, "build.png"),
+            caption,
+            parse_mode: "HTML",
+          },
+          { reply_markup: replyMarkup },
+        );
+      } else {
+        await ctx.editMessageCaption({
+          caption,
+          parse_mode: "HTML",
+          reply_markup: replyMarkup,
+        });
+      }
     } catch {
       await ctx.answerCallbackQuery({ text: "Chưa tải được dữ liệu tướng này!" }).catch(() => {});
     }
