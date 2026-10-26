@@ -3,13 +3,23 @@ import { InlineKeyboard } from "grammy";
 export interface AugmentInfo {
   name: string;
   winRate: string;
+  imgUrl?: string;
+  visualDesc?: string;
+}
+
+export interface BuildItem {
+  name: string;
+  imgUrl?: string;
+  enName?: string;
+  nick?: string;
+  visual?: string;
 }
 
 export interface BuildInfo {
   name: string;
   winRate?: string;
   pickRate?: string;
-  items: string[];
+  items: BuildItem[];
 }
 
 export interface PlaystyleCombo {
@@ -26,10 +36,54 @@ export interface AramChampionData {
   silverAugments: AugmentInfo[];
   builds: BuildInfo[];
   combos: PlaystyleCombo[];
-  boots?: string[];
+  boots?: BuildItem[];
   spells?: string[];
   url: string;
 }
+
+export const ITEM_VISUAL_MAP: Record<string, { en: string; nick: string; visual: string }> = {
+  "nghi thuc suy vong": { en: "Decaying Rite", nick: "Món mới ARAM", visual: "Trượng tím Mayhem" },
+  "guom suy vong": { en: "BotRK", nick: "Gươm Vô Danh", visual: "Kiếm xanh lá cong" },
+  "vo cuc kiem": { en: "Infinity Edge (IE)", nick: "Vô Cực", visual: "Đại kiếm vàng sáng" },
+  "mui ten yun tal": { en: "Yun Tal Wildarrows", nick: "Yun Tal", visual: "Cung tên lông chim" },
+  "vu dieu tu than": { en: "Death's Dance (DD)", nick: "Vũ Điệu", visual: "Rìu hai lưỡi đỏ" },
+  "ma vu song kiem": { en: "Phantom Dancer (PD)", nick: "Ma Vũ", visual: "Song kiếm xanh lá" },
+  "no tu thu": { en: "Immortal Shieldbow", nick: "Nỏ Tử Thủ", visual: "Cung đỏ tím tạo giáp" },
+  "huyet kiem": { en: "Bloodthirster (BT)", nick: "Huyết Kiếm", visual: "Kiếm đỏ hút máu" },
+  "dao chop navori": { en: "Navori Flickerblade", nick: "Navori", visual: "Đao tím hồi chiêu" },
+  "chuy hap huyet": { en: "Goredrinker", nick: "Chùy Hấp Huyết", visual: "Chùy sắt đỏ gai" },
+  "giap tam linh": { en: "Spirit Visage", nick: "Giáp Tâm Linh", visual: "Giáp ngực xanh lục" },
+  "jak'sho": { en: "Jak'Sho", nick: "Jak'Sho", visual: "Giáp tím sinh học" },
+  "jak'sho vo boc thich nghi": { en: "Jak'Sho", nick: "Jak'Sho", visual: "Giáp tím sinh học" },
+  "giay cuong no": { en: "Berserker's Greaves", nick: "Giày Tốc Đánh", visual: "Giày sắt viền vàng" },
+  "giay pham an": { en: "Gluttonous Greaves", nick: "Giày Hút Máu", visual: "Giày da đỏ thẫm" },
+  "giay thuy ngan": { en: "Mercury's Treads", nick: "Giày Kháng Phép", visual: "Giày xanh có cánh" },
+  "giay thep gai": { en: "Plated Steelcaps", nick: "Giày Ninja", visual: "Giày sắt xám" },
+  "tam hop kiem": { en: "Trinity Force", nick: "Tam Hợp Kiếm", visual: "Kiếm vàng ba mũi" },
+  "sung dai bac lien thanh": { en: "Rapid Firecannon", nick: "Đại Bác Liên Thanh", visual: "Cặp súng vàng đỏ" },
+  "loi phong": { en: "Stormrazor", nick: "Phong Kiếm", visual: "Kiếm xanh có sét" },
+  "loi nhac tu vong": { en: "Mortal Reminder", nick: "Lời Nhắc", visual: "Nỏ vàng bắn vết thương sâu" },
+  "no dominik": { en: "Lord Dominik", nick: "LDR", visual: "Nỏ xanh dương diệt tank" },
+  "riu den": { en: "Black Cleaver", nick: "Rìu Đen", visual: "Rìu hai lưỡi đá đen" },
+  "riu mang xa gia tang": { en: "Ravenous Hydra", nick: "Rìu Mãng Xà", visual: "Rìu đỏ liềm lan sát thương" },
+  "nguyet dao": { en: "Eclipse", nick: "Nguyệt Đao", visual: "Lưỡi liềm đen tím" },
+  "ngon giao shojin": { en: "Spear of Shojin", nick: "Shojin", visual: "Giáo rồng xanh ngọc" },
+  "gang tay bang gia": { en: "Iceborn Gauntlet", nick: "Găng Băng", visual: "Găng tay băng xanh" },
+  "dong ho cat zhonya": { en: "Zhonya's Hourglass", nick: "Đồng Hồ Cát", visual: "Đồng hồ cát vàng" },
+  "mu phu thuy rabadon": { en: "Rabadon's Deathcap", nick: "Mũ Phù Thủy", visual: "Mũ chóp nhọn đỏ tím" },
+};
+
+export const AUGMENT_VISUAL_MAP: Record<string, string> = {
+  "cu dam than bi": "👊 Nắm đấm xanh ngọc phát sáng (Đòn đánh/Q giảm hồi chiêu)",
+  "khong nhan can dam": "🛡️ Khiên xanh lá chiến binh (Hất tung tạo giáp)",
+  "bac hoc dien": "🧪 Bình thuốc độc xanh lá",
+  "not tram bung no": "💥 Biểu tượng nốt nhạc nổ tung",
+  "va cham thiet giap": "🛡️ Giáp sắt nặng có tia sét",
+  "chuyen hoa smpt-smck": "⚡ Mũi tên đảo ngược xanh-đỏ",
+  "chien hoac chuon": "🏃 Đôi cánh / người chạy nhanh",
+  "hoc thuat lam he": "🎭 Mặt nạ hề phân thân",
+  "diet khong lo": "🗡️ Kiếm đâm bàn tay khổng lồ",
+};
 
 const COMMON_CHAMPION_MAP: Record<string, string> = {
   yasuo: "yasuo",
@@ -93,24 +147,6 @@ const COMMON_CHAMPION_MAP: Record<string, string> = {
   mundo: "drmundo",
 };
 
-/** Chuẩn hóa tên tướng sang slug URL của PlayARAM.gg */
-export function normalizeChampionSlug(input: string): string {
-  let cleaned = input
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[.'’\-_]/g, "");
-
-  if (COMMON_CHAMPION_MAP[cleaned]) {
-    return COMMON_CHAMPION_MAP[cleaned];
-  }
-
-  // Bỏ khoảng trắng nếu có
-  cleaned = cleaned.replace(/\s+/g, "");
-  return cleaned || "yasuo";
-}
-
 const SUMMONER_SPELLS = new Set([
   "Tốc Biến",
   "Đánh Dấu",
@@ -124,6 +160,48 @@ const SUMMONER_SPELLS = new Set([
   "Minh Mẫn",
 ]);
 
+/** Chuẩn hóa tên tướng sang slug URL của PlayARAM.gg */
+export function normalizeChampionSlug(input: string): string {
+  let cleaned = input
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[.'’\-_]/g, "");
+
+  if (COMMON_CHAMPION_MAP[cleaned]) {
+    return COMMON_CHAMPION_MAP[cleaned];
+  }
+
+  cleaned = cleaned.replace(/\s+/g, "");
+  return cleaned || "yasuo";
+}
+
+function resolveItemMeta(rawName: string, rawImg?: string): BuildItem {
+  const norm = rawName
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "d")
+    .trim();
+
+  const meta = ITEM_VISUAL_MAP[norm];
+
+  let cleanUrl = rawImg ? rawImg.replace(/\/cdn-cgi\/image\/[^/]+\//, "/") : undefined;
+  if (cleanUrl && !cleanUrl.startsWith("http")) {
+    cleanUrl = `https://playaram.gg${cleanUrl}`;
+  }
+
+  return {
+    name: rawName,
+    imgUrl: cleanUrl,
+    enName: meta?.en,
+    nick: meta?.nick,
+    visual: meta?.visual,
+  };
+}
+
 /** Bóc tách HTML từ PlayARAM.gg thành cấu trúc dữ liệu ARAM Mayhem */
 export function parsePlayAramHtml(html: string, slug: string): AramChampionData {
   const titleMatch = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || html.match(/<title>([\s\S]*?)<\/title>/i);
@@ -131,7 +209,6 @@ export function parsePlayAramHtml(html: string, slug: string): AramChampionData 
 
   if (titleMatch) {
     const rawH1 = titleMatch[1].replace(/<[^>]*>/g, "").trim();
-    // Ví dụ: "Build Yasuo ARAM Hỗn Loạn: Lõi và trang bị mạnh nhất"
     const nameMatch = rawH1.match(/(?:Build\s+)?([A-Za-z0-9\s'\.\&]+?)(?:\s+ARAM|\s+–|\s*:)/i);
     if (nameMatch) {
       championName = nameMatch[1].trim();
@@ -152,7 +229,15 @@ export function parsePlayAramHtml(html: string, slug: string): AramChampionData 
       const name = match[1].trim().replace(/^(?:Tỉ lệ thắng|Tỉ lệ chọn)\s*/i, "");
       const winRate = match[2];
       if (name && name.length > 2 && !name.toLowerCase().includes("tỉ lệ") && results.length < 4) {
-        results.push({ name, winRate });
+        const normAug = name
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/đ/g, "d")
+          .replace(/Đ/g, "d")
+          .trim();
+        const visualDesc = AUGMENT_VISUAL_MAP[normAug];
+        results.push({ name, winRate, visualDesc });
       }
     }
     return results;
@@ -164,7 +249,7 @@ export function parsePlayAramHtml(html: string, slug: string): AramChampionData 
 
   // 2. Tách bộ trang bị (Build panel 0 & 1)
   const builds: BuildInfo[] = [];
-  const panelBoots: string[] = [];
+  const panelBoots: BuildItem[] = [];
   const panelSpells: string[] = [];
   const buildPanels = [...html.matchAll(/id="build-panel-\d+"[^>]*>([\s\S]*?)(?=<div[^>]*id="build-panel|\s*<\/section>|\s*<section|$)/g)];
 
@@ -173,16 +258,23 @@ export function parsePlayAramHtml(html: string, slug: string): AramChampionData 
     const bNameMatch = pContent.match(/<h3 class="bt-panel__name">([\s\S]*?)<\/h3>/i);
     const wrMatch = pContent.match(/class="sp-stat bt-kpi bt-kpi--wr">([\s\S]*?)<\/span>/i);
     const pickMatch = pContent.match(/class="sp-stat bt-kpi">([\s\S]*?)<\/span>/i);
-    const rawSlots = [...pContent.matchAll(/<span class="bt-slot__name">([\s\S]*?)<\/span>/g)].map((im) => im[1].trim());
 
-    const items: string[] = [];
-    for (const s of rawSlots) {
-      if (s.startsWith("Giày ")) {
-        if (!panelBoots.includes(s)) panelBoots.push(s);
-      } else if (SUMMONER_SPELLS.has(s)) {
-        if (!panelSpells.includes(s)) panelSpells.push(s);
+    // Bóc tách cả ảnh và tên món (hỗ trợ cả khi có hoặc không có thẻ img)
+    const slotMatches = [...pContent.matchAll(/<li[^>]*>(?:[\s\S]*?<img[^>]*src="([^"]*)")?[\s\S]*?<span class="bt-slot__name">([\s\S]*?)<\/span>/g)];
+
+    const items: BuildItem[] = [];
+    for (const sm of slotMatches) {
+      const rawImg = sm[1];
+      const sName = sm[2].trim();
+
+      if (sName.startsWith("Giày ")) {
+        if (!panelBoots.some((b) => b.name === sName)) {
+          panelBoots.push(resolveItemMeta(sName, rawImg));
+        }
+      } else if (SUMMONER_SPELLS.has(sName)) {
+        if (!panelSpells.includes(sName)) panelSpells.push(sName);
       } else {
-        items.push(s);
+        items.push(resolveItemMeta(sName, rawImg));
       }
     }
 
@@ -212,10 +304,6 @@ export function parsePlayAramHtml(html: string, slug: string): AramChampionData 
     }
   }
 
-  // 4. Giày & Phép bổ trợ
-  const boots = panelBoots;
-  const spells = panelSpells;
-
   return {
     slug,
     championName,
@@ -224,8 +312,8 @@ export function parsePlayAramHtml(html: string, slug: string): AramChampionData 
     silverAugments,
     builds,
     combos,
-    boots,
-    spells,
+    boots: panelBoots,
+    spells: panelSpells,
     url: `https://playaram.gg/tuong/${slug}`,
   };
 }
@@ -252,7 +340,24 @@ export async function fetchAramChampion(query: string): Promise<AramChampionData
   return parsePlayAramHtml(html, slug);
 }
 
-/** Định dạng dữ liệu ARAM thành tin nhắn Telegram HTML sinh động */
+function formatItemLine(item: BuildItem, prefix = "• "): string {
+  const linkText = item.imgUrl
+    ? `<a href="${item.imgUrl}"><b>${escapeHtml(item.name)}</b></a>`
+    : `<b>${escapeHtml(item.name)}</b>`;
+
+  const tagParts: string[] = [];
+  if (item.enName || item.nick) {
+    tagParts.push(`<i>${escapeHtml(item.nick || item.enName!)}</i>`);
+  }
+  if (item.visual) {
+    tagParts.push(escapeHtml(item.visual));
+  }
+
+  const tags = tagParts.length > 0 ? ` [${tagParts.join(" · ")}]` : "";
+  return `${prefix}${linkText}${tags}`;
+}
+
+/** Định dạng dữ liệu ARAM thành tin nhắn Telegram HTML sinh động kèm nhận diện hình ảnh */
 export function formatAramMessage(d: AramChampionData): string {
   const lines: string[] = [
     `⚔️ <b>ARAM HỖN LOẠN – ${escapeHtml(d.championName.toUpperCase())}</b>`,
@@ -263,15 +368,30 @@ export function formatAramMessage(d: AramChampionData): string {
   // Lõi nâng cấp
   lines.push("🌟 <b>LÕI NÂNG CẤP TỐI ƯU NHẤT:</b>");
   if (d.prismaticAugments.length > 0) {
-    const list = d.prismaticAugments.map((a) => `• <b>${escapeHtml(a.name)}</b> <i>(${a.winRate} win)</i>`).join("\n");
+    const list = d.prismaticAugments
+      .map((a) => {
+        const hint = a.visualDesc ? `\n   ↳ <i>${escapeHtml(a.visualDesc)}</i>` : "";
+        return `• <b>${escapeHtml(a.name)}</b> <i>(${a.winRate} win)</i>${hint}`;
+      })
+      .join("\n");
     lines.push(`💎 <b>Lõi Kim Cương:</b>\n${list}`);
   }
   if (d.goldAugments.length > 0) {
-    const list = d.goldAugments.map((a) => `• <b>${escapeHtml(a.name)}</b> <i>(${a.winRate} win)</i>`).join("\n");
+    const list = d.goldAugments
+      .map((a) => {
+        const hint = a.visualDesc ? `\n   ↳ <i>${escapeHtml(a.visualDesc)}</i>` : "";
+        return `• <b>${escapeHtml(a.name)}</b> <i>(${a.winRate} win)</i>${hint}`;
+      })
+      .join("\n");
     lines.push(`🥇 <b>Lõi Vàng:</b>\n${list}`);
   }
   if (d.silverAugments.length > 0) {
-    const list = d.silverAugments.map((a) => `• <b>${escapeHtml(a.name)}</b> <i>(${a.winRate} win)</i>`).join("\n");
+    const list = d.silverAugments
+      .map((a) => {
+        const hint = a.visualDesc ? `\n   ↳ <i>${escapeHtml(a.visualDesc)}</i>` : "";
+        return `• <b>${escapeHtml(a.name)}</b> <i>(${a.winRate} win)</i>${hint}`;
+      })
+      .join("\n");
     lines.push(`🥈 <b>Lõi Bạc:</b>\n${list}`);
   }
 
@@ -287,31 +407,43 @@ export function formatAramMessage(d: AramChampionData): string {
   // Bộ trang bị
   if (d.builds.length > 0) {
     lines.push("");
-    lines.push("🛡 <b>BUILD TRANG BỊ ĐỀ XUẤT:</b>");
+    lines.push("🛡 <b>BUILD TRANG BỊ ĐỀ XUẤT (KÈM NHẬN DIỆN ITEM):</b>");
+    lines.push("<i>(Bấm vào tên từng món để xem ảnh icon; chữ nghiêng là tên gõ tắt tìm trong shop in-game)</i>");
     const b = d.builds[0];
-    const wrBadge = b.winRate ? ` <i>(Thắng: ${b.winRate})</i>` : "";
-    lines.push(`<b>${escapeHtml(b.name)}</b>${wrBadge}`);
+    const wrBadge = b.winRate ? ` <i>(Tỉ lệ thắng: ${b.winRate})</i>` : "";
+    lines.push(`\n<b>${escapeHtml(b.name)}</b>${wrBadge}`);
+
     if (b.items.length >= 2) {
-      lines.push(`• Cốt lõi: <b>${escapeHtml(b.items[0])}</b> + <b>${escapeHtml(b.items[1])}</b>`);
+      lines.push("<b>Trang bị cốt lõi (Bắt buộc):</b>");
+      lines.push(formatItemLine(b.items[0], "1. "));
+      lines.push(formatItemLine(b.items[1], "2. "));
+
       const rest = b.items.slice(2);
       if (rest.length > 0) {
-        lines.push(`• Các món tiếp theo: ${rest.map((i) => `<b>${escapeHtml(i)}</b>`).join(", ")}`);
+        lines.push("<b>Các món tiếp theo:</b>");
+        rest.forEach((item, idx) => {
+          lines.push(formatItemLine(item, `${idx + 3}. `));
+        });
       }
     } else if (b.items.length > 0) {
-      lines.push(`• Trang bị: ${b.items.map((i) => `<b>${escapeHtml(i)}</b>`).join(", ")}`);
+      b.items.forEach((item, idx) => {
+        lines.push(formatItemLine(item, `${idx + 1}. `));
+      });
     }
   }
 
   // Giày & Phép bổ trợ
   if (d.boots && d.boots.length > 0) {
-    lines.push(`• Giày ưu tiên: ${d.boots.map((b) => `<b>${escapeHtml(b)}</b>`).join(" / ")}`);
+    lines.push("");
+    lines.push("<b>Giày ưu tiên:</b>");
+    d.boots.forEach((boot) => lines.push(formatItemLine(boot, "👢 ")));
   }
   if (d.spells && d.spells.length > 0) {
-    lines.push(`• Phép bổ trợ: ${d.spells.map((s) => `<b>${escapeHtml(s)}</b>`).join(" | ")}`);
+    lines.push(`⚡ <b>Phép bổ trợ:</b> ${d.spells.map((s) => `<b>${escapeHtml(s)}</b>`).join(" | ")}`);
   }
 
   lines.push("");
-  lines.push(`🔗 <a href="${d.url}"><b>Bấm đây để xem chi tiết biểu đồ trên PlayARAM.gg</b></a>`);
+  lines.push(`🔗 <a href="${d.url}"><b>Bấm đây để xem đầy đủ ảnh Icon và biểu đồ trên PlayARAM.gg</b></a>`);
 
   return lines.join("\n");
 }
@@ -319,7 +451,7 @@ export function formatAramMessage(d: AramChampionData): string {
 /** Tạo bàn phím Inline cho lệnh ARAM */
 export function aramKeyboard(currentSlug = "yasuo"): InlineKeyboard {
   return new InlineKeyboard()
-    .url("🌐 Xem trên PlayARAM.gg", `https://playaram.gg/tuong/${currentSlug}`)
+    .url("🌐 Mở PlayARAM.gg (Có đầy đủ ảnh icon)", `https://playaram.gg/tuong/${currentSlug}`)
     .row()
     .text("🌪 Yasuo", "aram:yasuo")
     .text("⚔️ Yone", "aram:yone")
@@ -335,7 +467,6 @@ export function isAramQuery(text: string): boolean {
   const norm = text.trim().toLowerCase();
   if (norm.startsWith("/")) return false;
 
-  // Bắt các mẫu hỏi về aram
   if (/\b(?:aram|playaram)\b/i.test(norm)) return true;
   if (/lõi\s+(?:cho|nâng\s*cấp\s*cho)?\s+[a-zà-ỹ0-9]+/i.test(norm)) return true;
   if (/build\s+[a-zà-ỹ0-9]+\s+aram/i.test(norm)) return true;
@@ -345,14 +476,12 @@ export function isAramQuery(text: string): boolean {
 
 /** Trích xuất tên tướng từ câu hỏi tự nhiên */
 export function extractChampionFromQuery(text: string): string {
-  // 1. Nếu có "/aram <tướng>" ở bất kỳ vị trí nào
   const slashMatch = text.match(/\/aram\s+([a-zA-Z0-9\s'’\-]+)/i);
   if (slashMatch) {
     const raw = slashMatch[1].trim().split(/\s+/)[0];
     return raw.replace(/[?!.,;:~\\\/]/g, "");
   }
 
-  // 2. Kiểm tra xem có tên tướng nào trong COMMON_CHAMPION_MAP xuất hiện không
   const lower = text.toLowerCase();
   for (const key of Object.keys(COMMON_CHAMPION_MAP)) {
     const regex = new RegExp(`\\b${key}\\b`, "i");
@@ -361,7 +490,6 @@ export function extractChampionFromQuery(text: string): string {
     }
   }
 
-  // 3. Làm sạch từ khóa phụ
   let cleaned = text.trim();
   cleaned = cleaned
     .replace(/https?:\/\/[^\s]+/gi, " ")

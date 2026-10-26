@@ -70,7 +70,10 @@ test("parsePlayAramHtml bóc tách chuẩn xác lõi, trang bị và combo", () 
 
   assert.equal(data.builds.length, 1);
   assert.equal(data.builds[0].name, "Chí mạng · Nghi Thức Suy Vong");
-  assert.deepEqual(data.builds[0].items, ["Nghi Thức Suy Vong", "Gươm Suy Vong", "Vô Cực Kiếm"]);
+  assert.deepEqual(
+    data.builds[0].items.map((i) => i.name),
+    ["Nghi Thức Suy Vong", "Gươm Suy Vong", "Vô Cực Kiếm"],
+  );
 
   assert.equal(data.combos.length, 1);
   assert.ok(data.combos[0].title.includes("Q không hồi chiêu"));
