@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 process.env.TELEGRAM_BOT_TOKEN ??= "test";
 process.env.LLM_MODEL = ""; // luôn dùng parser luật trong test
+process.env.AUTO_SCHEDULE = "0"; // tự xếp lịch được test riêng trong slot.test.ts
 const { openDb } = await import("../src/db.ts");
 const { createTaskService } = await import("../src/tasks.ts");
 const { DAY } = await import("../src/time.ts");

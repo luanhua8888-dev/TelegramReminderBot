@@ -5,34 +5,46 @@ import { config, llmEnabled } from "./config.ts";
 import type { Db, Task } from "./db.ts";
 import { llmParse } from "./llm.ts";
 import { parseVietnamese, type Parsed } from "./parser.ts";
+import { findFreeSlot } from "./slot.ts";
 import { DAY, formatLocal, fromLocal, startOfLocalDay, toLocal } from "./time.ts";
 
-export type AddResult = { task: Task; auto: boolean; via: "llm" | "rules" };
+export type AddResult = { task: Task; auto: boolean };
 
 export function createTaskService(db: Db) {
-  async function parse(input: string, chatId: number, now: number): Promise<{ parsed: Parsed; auto: boolean; via: "llm" | "rules" }> {
+  // Thứ tự: parser luật (chính xác, có test) → LLM cho cách nói luật không hiểu → tự xếp khung trống
+  async function parse(input: string, chatId: number, now: number): Promise<{ parsed: Parsed; auto: boolean }> {
+    const rules = parseVietnamese(input, { now, tzOffsetMin: config.tzOffsetMin, defaultHour: config.defaultHour });
+    if (rules.dueAt !== null) return { parsed: rules, auto: false };
+
     if (llmEnabled) {
       try {
-        const busy = db
-          .pendingTasks(chatId)
-          .filter((t) => t.due_at !== null && t.due_at > now)
-          .slice(0, 40)
-          .map((t) => ({ text: t.text, dueAt: t.due_at! }));
-        const r = await llmParse(input, now, busy);
-        if (r) return { parsed: r, auto: r.auto, via: "llm" };
+        const r = await llmParse(input, now);
+        if (r?.dueAt != null) return { parsed: r, auto: false };
       } catch (err) {
-        console.warn("[llm] lỗi, dùng parser luật:", (err as Error).message);
+        console.warn("[llm] lỗi, bỏ qua:", (err as Error).message);
       }
     }
-    const parsed = parseVietnamese(input, { now, tzOffsetMin: config.tzOffsetMin, defaultHour: config.defaultHour });
-    return { parsed, auto: false, via: "rules" };
+
+    if (!config.autoSchedule) return { parsed: rules, auto: false };
+    const busy = db
+      .pendingTasks(chatId)
+      .map((t) => t.due_at)
+      .filter((d): d is number => d !== null && d > now);
+    const dueAt = findFreeSlot({
+      now,
+      busy,
+      tzOffsetMin: config.tzOffsetMin,
+      workStartHour: config.workStartHour,
+      workEndHour: config.workEndHour,
+    });
+    return { parsed: { ...rules, dueAt }, auto: true };
   }
 
   return {
     async add(chatId: number, input: string, source: string): Promise<AddResult> {
-      const { parsed, auto, via } = await parse(input, chatId, Date.now());
+      const { parsed, auto } = await parse(input, chatId, Date.now());
       const task = db.addTask(chatId, parsed.text, parsed.dueAt, parsed.recurring, source);
-      return { task, auto, via };
+      return { task, auto };
     },
 
     /** Việc lặp lại → dời sang lần kế tiếp; việc thường → đánh dấu xong. */

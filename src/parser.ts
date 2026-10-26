@@ -17,9 +17,14 @@ const RE = {
   recurring: word("(?:mỗi|moi|hàng|hang|hằng)\\s*(ngày|ngay|sáng|sang|tối|toi|tuần|tuan)"),
   relative: word("(?:(sau|trong)\\s+)?(\\d+)\\s*(phút|phut|ph|p|m|tiếng|tieng|giờ|gio|h|ngày|ngay)(?:\\s*(nữa|nua))?"),
   date: word("(?:ngày\\s*)?(\\d{1,2})[/-](\\d{1,2})(?:[/-](\\d{2,4}))?"),
-  nextWeek: word("tuần\\s*(?:sau|tới|toi)|tuan\\s*(?:sau|toi)"),
+  endOfWeek: word("cuối\\s*tuần(?:\\s*(này))?(?:\\s*(sau|tới))?"),
+  monthEdge: word("(đầu|cuối)\\s*tháng(?:\\s*(này|sau|tới))?"),
+  nextWeek: word("(?:đầu\\s*)?(?:tuần\\s*(?:sau|tới|toi)|tuan\\s*(?:sau|toi))"),
   weekday: word("(?:thứ|thu)\\s*(2|3|4|5|6|7|hai|ba|tư|tu|bốn|năm|sáu|bảy|bay)|t([2-7])|(chủ\\s*nhật|chu\\s*nhat|cn)"),
-  dayWord: word("(?:ngày\\s*)?(mai|mốt)|ngày\\s*(kia)|(?:hôm\\s*)?(nay)"),
+  // "chị Mai", "anh Mai"... là tên người, không phải "ngày mai"
+  dayWord: word(
+    "(?:ngày\\s*)?(?<!(?:chị|anh|em|cô|chú|bác|bạn|ông|bà|bé|dì|cậu|mợ|thím|sếp|c|a|e)\\s)(mai|mốt)|ngày\\s*(kia)|(?:hôm\\s*)?(nay)",
+  ),
   // không nhận "sang", "toi", "dem" không dấu vì trùng "sang", "tôi", "đem"
   timeOfDay: word("(sáng|trưa|trua|chiều|chieu|tối|đêm)"),
   time: word("(?:lúc\\s*)?(\\d{1,2})\\s*(?:h|g|giờ|gio|:)\\s*(\\d{1,2}|rưỡi|ruoi)?\\s*(am|pm)?|lúc\\s*(\\d{1,2})"),
@@ -110,9 +115,27 @@ export function parseVietnamese(input: string, opts: ParseOptions): Parsed {
     hasDay = true;
   }
 
-  const nextWeek = Boolean(c.take(RE.nextWeek));
+  // "đầu tháng sau" → ngày 1 tháng sau; "cuối tháng" → ngày cuối tháng này
+  const me = c.take(RE.monthEdge);
+  if (me && !hasDay) {
+    const nextMonth = me[2] === "sau" || me[2] === "tới" || (me[1] === "đầu" && !me[2]);
+    if (nextMonth) mo += 1;
+    if (mo > 12) {
+      mo = 1;
+      y += 1;
+    }
+    d = me[1] === "đầu" ? 1 : new Date(Date.UTC(y, mo, 0)).getUTCDate();
+    hasDay = true;
+    explicitYear = true;
+  }
 
-  const wd = c.take(RE.weekday);
+  // "cuối tuần" = thứ 7; "cuối tuần sau" = thứ 7 tuần sau
+  const eow = c.take(RE.endOfWeek);
+  let nextWeek = Boolean(eow?.[2]);
+  nextWeek = Boolean(c.take(RE.nextWeek)) || nextWeek;
+
+  const wd = eow ? null : c.take(RE.weekday);
+  if (eow) weekday = 6;
   if (wd) {
     if (wd[3]) weekday = 0;
     else if (wd[2]) weekday = Number(wd[2]) - 1;

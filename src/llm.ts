@@ -1,35 +1,38 @@
 // Parser bằng LLM qua endpoint kiểu OpenAI (/chat/completions).
 // Đổi LLM_BASE_URL + LLM_MODEL là chạy được với OpenAI, OpenRouter, Ollama, LM Studio...
+// Chỉ được gọi khi parser luật không tìm thấy thời gian ("cuối tuần", "đầu tháng sau"...).
+// Model nhỏ tính ngày rất kém, nên đưa sẵn bảng lịch để nó tra thay vì tự cộng ngày.
 
 import { config } from "./config.ts";
 import type { Parsed, Recurring } from "./parser.ts";
-import { parseLocalIso, toLocal, toLocalIso, weekdayName } from "./time.ts";
+import { DAY, parseLocalIso, startOfLocalDay, toLocal, toLocalIso, weekdayName } from "./time.ts";
 
-export type Busy = { text: string; dueAt: number };
+const SYSTEM_PROMPT = `Bạn tách ghi chú nhắc việc tiếng Việt thành JSON:
+{"text": string, "has_time": boolean, "due": "YYYY-MM-DD HH:mm" | null, "recurring": "daily" | "weekly" | "none"}
 
-const SYSTEM_PROMPT = `Bạn là bộ phân tích lời nhắc việc tiếng Việt. Người dùng gõ nhanh một ghi chú, bạn tách ra:
-- "text": nội dung việc cần làm, ngắn gọn, bỏ các phần chỉ thời gian và các từ thừa như "nhắc tôi", "nhớ".
-- "due": thời điểm nhắc, định dạng "YYYY-MM-DD HH:mm" theo giờ địa phương.
-- "recurring": "daily", "weekly" hoặc "none".
-- "auto": true nếu bạn tự chọn giờ vì người dùng không nói, false nếu người dùng đã nói rõ.
+- "text": việc cần làm, bỏ phần chỉ thời gian và các từ như "nhắc tôi", "nhớ". Giữ nguyên tên người.
+- "has_time": true CHỈ KHI ghi chú có nói thời điểm (ví dụ "cuối tuần", "đầu tháng sau", "tối mai", "sau Tết").
+  Tên người như "chị Mai" không phải thời gian. Không nói thời điểm → false và "due": null.
+- "due": tra ngày trong BẢNG LỊCH, không tự tính. Không nói giờ thì dùng DEFAULT_HOUR:00.
+  "cuối tuần" = thứ 7 gần nhất. "đầu tháng sau" = ngày 1 tháng sau.
+- Chỉ trả về JSON.`;
 
-Quy tắc:
-- Hiểu cách nói tự nhiên: "mai", "mốt", "tối nay", "thứ 6 tuần sau", "30p nữa", "3h chiều", "cuối tuần", "đầu tháng sau".
-- "3h", "4h" không nói buổi → hiểu là buổi chiều.
-- Nếu người dùng không nói thời gian: tự xếp một khung giờ hợp lý trong khoảng WORK_HOURS, ưu tiên sớm nhất có thể
-  (ít nhất 30 phút sau hiện tại), tránh trùng ±30 phút với các việc đã có. Việc gấp thì xếp sớm, việc nhẹ có thể để chiều/tối.
-- Không bao giờ trả về thời điểm trong quá khứ.
-Chỉ trả về JSON: {"text": string, "due": string, "recurring": "daily"|"weekly"|"none", "auto": boolean}`;
-
-export async function llmParse(input: string, now: number, busy: Busy[]): Promise<(Parsed & { auto: boolean }) | null> {
+function calendar(now: number): string {
   const off = config.tzOffsetMin;
-  const nowParts = toLocal(now, off);
-  const schedule = busy.length
-    ? busy.map((b) => `- ${toLocalIso(b.dueAt, off)}: ${b.text}`).join("\n")
-    : "(trống)";
-  const userMsg = `Bây giờ là ${toLocalIso(now, off)} (${weekdayName(nowParts.dow)}).
-Các việc đã có lịch:
-${schedule}
+  const today = startOfLocalDay(now, off);
+  return Array.from({ length: 14 }, (_, i) => {
+    const d = today + i * DAY;
+    const label = i === 0 ? " (hôm nay)" : i === 1 ? " (mai)" : "";
+    return `${toLocalIso(d, off).slice(0, 10)} ${weekdayName(toLocal(d, off).dow)}${label}`;
+  }).join("\n");
+}
+
+/** dueAt = null khi ghi chú không nói thời gian. Trả về null nếu LLM trả lời không dùng được. */
+export async function llmParse(input: string, now: number): Promise<Parsed | null> {
+  const off = config.tzOffsetMin;
+  const userMsg = `Bây giờ: ${toLocalIso(now, off)} (${weekdayName(toLocal(now, off).dow)})
+BẢNG LỊCH:
+${calendar(now)}
 
 Ghi chú: ${input}`;
 
@@ -41,16 +44,14 @@ Ghi chú: ${input}`;
     },
     body: JSON.stringify({
       model: config.llm.model,
+      temperature: 0,
       messages: [
-        {
-          role: "system",
-          content: SYSTEM_PROMPT.replace("WORK_HOURS", `${config.workStartHour}h–${config.workEndHour}h`),
-        },
+        { role: "system", content: SYSTEM_PROMPT.replace("DEFAULT_HOUR", String(config.defaultHour).padStart(2, "0")) },
         { role: "user", content: userMsg },
       ],
       response_format: { type: "json_object" },
     }),
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(config.llm.timeoutMs),
   });
   if (!res.ok) throw new Error(`LLM HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
 
@@ -59,15 +60,16 @@ Ghi chú: ${input}`;
   if (!raw) return null;
   const json = JSON.parse(raw.replace(/^```(?:json)?\s*|\s*```$/g, "")) as {
     text?: unknown;
+    has_time?: unknown;
     due?: unknown;
     recurring?: unknown;
-    auto?: unknown;
   };
 
   const text = typeof json.text === "string" && json.text.trim() ? json.text.trim() : input;
-  let dueAt = typeof json.due === "string" ? parseLocalIso(json.due, off) : null;
-  if (dueAt !== null && dueAt < now - 60_000) dueAt = null; // LLM trả về quá khứ → coi như không hợp lệ
-  if (dueAt === null) return null;
   const recurring: Recurring = json.recurring === "daily" || json.recurring === "weekly" ? json.recurring : null;
-  return { text, dueAt, recurring, auto: json.auto === true };
+  if (json.has_time !== true) return { text, dueAt: null, recurring };
+  const dueAt = typeof json.due === "string" ? parseLocalIso(json.due, off) : null;
+  // Quá khứ hoặc xa hơn 1 năm → coi như LLM đoán bậy
+  if (dueAt === null || dueAt < now - 60_000 || dueAt > now + 366 * DAY) return null;
+  return { text, dueAt, recurring };
 }

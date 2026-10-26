@@ -35,6 +35,14 @@ const cases: [string, string, string | null, string | null][] = [
   ["nhắc tôi mốt 9h rưỡi đi khám", "đi khám", "2026-10-28 09:30", null],
   ["nhắc mình ngày kia trả sách", "trả sách", "2026-10-28 09:00", null],
   ["11h đêm tắt máy", "tắt máy", "2026-10-26 23:00", null],
+  ["gọi chị Mai hỏi hợp đồng", "gọi chị Mai hỏi hợp đồng", null, null],
+  ["cuối tuần dọn nhà", "dọn nhà", "2026-10-31 09:00", null],
+  ["cuối tuần sau đi Đà Lạt", "đi Đà Lạt", "2026-11-07 09:00", null],
+  ["đầu tuần sau họp", "họp", "2026-11-02 09:00", null],
+  ["đầu tháng sau đóng tiền điện", "đóng tiền điện", "2026-11-01 09:00", null],
+  ["cuối tháng chốt sổ", "chốt sổ", "2026-10-31 09:00", null],
+  ["chiều mốt đi lấy kính", "đi lấy kính", "2026-10-28 15:00", null],
+  ["mai 3h gọi anh Mai", "gọi anh Mai", "2026-10-27 15:00", null],
 ];
 
 for (const [input, text, due, recurring] of cases) {

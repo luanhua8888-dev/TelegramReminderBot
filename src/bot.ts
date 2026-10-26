@@ -3,6 +3,7 @@ import { config, llmEnabled } from "./config.ts";
 import type { Db } from "./db.ts";
 import { formatTask, escapeHtml, taskKeyboard, when, type AddResult, type TaskService } from "./tasks.ts";
 import { DAY, HOUR, fromLocal, startOfLocalDay, toLocal } from "./time.ts";
+import { requestZaloLogin } from "./zalo.ts";
 
 const HELP = `<b>Ghi note nhanh, bot nhắc đúng giờ</b>
 
@@ -11,7 +12,8 @@ Cứ gõ tin nhắn bình thường, ví dụ:
 • <code>30p nữa uống thuốc</code>
 • <code>thứ 6 3h chiều nộp báo cáo</code>
 • <code>mỗi ngày 7h tập thể dục</code>
-• <code>mua sữa</code> (không có giờ → ${llmEnabled ? "AI tự xếp giờ" : "lưu vào inbox"})
+• <code>cuối tuần dọn nhà</code>${llmEnabled ? " (AI hiểu)" : ""}
+• <code>mua sữa</code> (không có giờ → ${config.autoSchedule ? "tự xếp vào khung trống" : "lưu vào inbox"})
 
 Lệnh:
 /list – việc chưa xong
@@ -20,6 +22,7 @@ Lệnh:
 /move 12 mai 10h – dời giờ #12
 /del 12 – xoá #12
 /id – xem chat id
+/zalo – lấy mã QR kết nối Zalo
 
 Đến giờ mà chưa bấm ✅ thì bot nhắc lại mỗi ${config.repeatEveryMin} phút (tối đa ${config.maxRepeats} lần).`;
 
@@ -39,6 +42,10 @@ export function createBot(db: Db, tasks: TaskService) {
 
   bot.command(["start", "help"], (ctx) => ctx.reply(HELP, { parse_mode: "HTML" }));
   bot.command("id", (ctx) => ctx.reply(`Chat id: <code>${ctx.chat.id}</code>`, { parse_mode: "HTML" }));
+
+  bot.command("zalo", (ctx) =>
+    ctx.reply(config.zalo.enabled ? requestZaloLogin(tasks, bot.api) : "Bridge Zalo đang tắt (ZALO_ENABLED=0 trong .env)."),
+  );
 
   bot.command("add", async (ctx) => {
     if (!ctx.match.trim()) return ctx.reply("Cú pháp: /add mai 9h gọi khách A");
@@ -126,10 +133,9 @@ function untilTonight(): number {
   return tonight > now ? tonight - now : HOUR;
 }
 
-async function replyAdded(ctx: Context, { task, auto, via }: AddResult) {
+async function replyAdded(ctx: Context, { task, auto }: AddResult) {
   let msg = `📝 ${formatTask(task)}`;
   if (task.due_at === null) msg += `\n<i>Chưa có giờ nên chưa nhắc. Đặt giờ: /move ${task.id} mai 9h</i>`;
-  else if (auto) msg += "\n<i>🤖 Tự xếp giờ, bấm 📅 hoặc /move để đổi.</i>";
-  if (via === "rules" && llmEnabled) msg += "\n<i>(AI lỗi, dùng parser dự phòng)</i>";
+  else if (auto) msg += `\n<i>🤖 Bạn chưa nói giờ nên mình xếp vào khung trống. Đổi: /move ${task.id} mai 10h</i>`;
   await ctx.reply(msg, { parse_mode: "HTML", reply_markup: taskKeyboard(task.id) });
 }

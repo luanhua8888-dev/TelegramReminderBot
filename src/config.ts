@@ -34,7 +34,9 @@ export const config = {
   digestHour: num("DIGEST_HOUR", 7),
   // Giờ mặc định khi chỉ nói ngày mà không nói giờ
   defaultHour: num("DEFAULT_HOUR", 9),
-  // Khung giờ để LLM tự xếp lịch
+  // Việc không có giờ: 1 = tự xếp vào khung trống, 0 = để trong inbox
+  autoSchedule: process.env.AUTO_SCHEDULE !== "0",
+  // Khung giờ được tự xếp việc
   workStartHour: num("WORK_START_HOUR", 8),
   workEndHour: num("WORK_END_HOUR", 21),
   llm: {
@@ -42,6 +44,8 @@ export const config = {
     // Endpoint kiểu OpenAI: OpenAI, OpenRouter, Ollama, ... đều dùng được
     baseUrl: (process.env.LLM_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, ""),
     model: process.env.LLM_MODEL ?? "",
+    // Model local chạy CPU có thể mất vài chục giây ở lần gọi đầu (nạp model)
+    timeoutMs: num("LLM_TIMEOUT_SEC", 60) * 1000,
   },
   zalo: {
     enabled: process.env.ZALO_ENABLED === "1",

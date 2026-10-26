@@ -11,12 +11,36 @@ import { formatTask, taskKeyboard, type TaskService } from "./tasks.ts";
 
 const NOTE_PREFIX = /^\s*#(?:note|nhac|nhắc|todo)\s+([\s\S]+)/iu;
 
+// QR hết hạn quá số lần này thì dừng, tránh spam QR vào Telegram; gõ /zalo để thử lại
+const MAX_QR = 3;
+
+let state: "idle" | "connecting" | "connected" = "idle";
+
+/** Gọi từ lệnh /zalo: trả về câu trả lời cho người dùng. */
+export function requestZaloLogin(tasks: TaskService, tg: Api): string {
+  if (state === "connected") return "Bridge Zalo đang kết nối rồi.";
+  if (state === "connecting") return "Đang chờ quét QR, xem mã QR mới nhất ở trên.";
+  startZaloBridge(tasks, tg).catch((err) => console.error("[zalo] không khởi động được:", err.message ?? err));
+  return "Đang tạo mã QR Zalo...";
+}
+
 export async function startZaloBridge(tasks: TaskService, tg: Api): Promise<void> {
   const ownerChatId = config.ownerChatId;
   if (!ownerChatId) {
     console.warn("[zalo] cần ALLOWED_CHAT_IDS để biết gửi note Zalo về chat Telegram nào, bỏ qua bridge.");
     return;
   }
+  state = "connecting";
+  try {
+    await connect(tasks, tg, ownerChatId);
+    state = "connected";
+  } catch (err) {
+    state = "idle";
+    throw err;
+  }
+}
+
+async function connect(tasks: TaskService, tg: Api, ownerChatId: number): Promise<void> {
 
   // index.d.ts của zca-js không resolve được với moduleResolution NodeNext, nên trỏ thẳng vào file type
   type ZcaModule = typeof import("../node_modules/zca-js/dist/index.js");
@@ -35,8 +59,10 @@ export async function startZaloBridge(tasks: TaskService, tg: Api): Promise<void
   }
 
   if (!api) {
+    let qrCount = 0;
     api = await zalo.loginQR({}, async (event) => {
       if (event.type === LoginQRCallbackEventType.QRCodeGenerated) {
+        qrCount++;
         await event.actions.saveToFile("data/zalo-qr.png");
         // Gửi luôn QR về Telegram để quét bằng app Zalo trên điện thoại
         await tg
@@ -46,6 +72,14 @@ export async function startZaloBridge(tasks: TaskService, tg: Api): Promise<void
           .catch((err) => console.error("[zalo] gửi QR qua Telegram lỗi:", err.message));
         console.log("[zalo] đã lưu QR vào data/zalo-qr.png, hãy quét bằng app Zalo");
       } else if (event.type === LoginQRCallbackEventType.QRCodeExpired) {
+        if (qrCount >= MAX_QR) {
+          console.log(`[zalo] QR hết hạn ${qrCount} lần, dừng. Gõ /zalo trên Telegram để thử lại.`);
+          await tg
+            .sendMessage(ownerChatId, "⌛ QR Zalo hết hạn. Khi nào sẵn sàng quét thì gõ /zalo để lấy mã mới.")
+            .catch(() => {});
+          event.actions.abort();
+          return;
+        }
         console.log("[zalo] QR hết hạn, tạo QR mới");
         event.actions.retry();
       } else if (event.type === LoginQRCallbackEventType.GotLoginInfo) {
@@ -62,8 +96,8 @@ export async function startZaloBridge(tasks: TaskService, tg: Api): Promise<void
     const m = msg.data.content.match(NOTE_PREFIX);
     if (!m) return;
     try {
-      const { task } = await tasks.add(ownerChatId, m[1].trim(), "zalo");
-      await tg.sendMessage(ownerChatId, `📝 ${formatTask(task)}`, {
+      const { task, auto } = await tasks.add(ownerChatId, m[1].trim(), "zalo");
+      await tg.sendMessage(ownerChatId, `📝 ${formatTask(task)}${auto ? "\n<i>🤖 Tự xếp vào khung trống.</i>" : ""}`, {
         parse_mode: "HTML",
         reply_markup: taskKeyboard(task.id),
       });

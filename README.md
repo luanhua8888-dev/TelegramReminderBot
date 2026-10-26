@@ -32,25 +32,32 @@ Gõ tin nhắn bình thường:
 | `thứ 6 tuần sau review` | thứ 6 của tuần sau, 09:00 |
 | `25/12 mua quà` | 09:00 ngày 25/12 |
 | `mỗi ngày 7h tập thể dục` | lặp hằng ngày |
-| `mua sữa` | không có giờ: lưu vào inbox, hoặc AI tự xếp giờ nếu đã bật LLM |
+| `cuối tuần dọn nhà` | thứ 7 tới, 09:00 |
+| `đầu tháng sau đóng tiền điện` | 09:00 ngày 1 tháng sau |
+| `gọi chị Mai` | "Mai" là tên người, không phải "ngày mai" |
+| `mua sữa` | không có giờ: tự xếp vào khung trống sớm nhất (tắt bằng `AUTO_SCHEDULE=0`) |
 
 Khi tới giờ, tin nhắc có các nút ✅ Xong · ⏰ +15p · ⏰ +1h · 🌙 Tối nay · 📅 Mai.
 Chưa bấm thì bot nhắc lại mỗi 15 phút, tối đa 6 lần. Mỗi sáng 7h bot gửi tóm tắt việc trong ngày kèm inbox.
 
 Lệnh: `/list`, `/today`, `/move 12 mai 10h`, `/done 12`, `/del 12`.
 
-## Bật AI tự xếp lịch
+## Tự xếp lịch và AI
 
-Điền `LLM_MODEL` (+ `LLM_API_KEY`) trong `.env`. Dùng được mọi endpoint kiểu OpenAI: OpenAI, OpenRouter, hoặc Ollama chạy local (miễn phí).
-AI được gửi kèm danh sách việc đã có lịch, nên với câu không có giờ nó sẽ chọn khung trống trong `WORK_START_HOUR`–`WORK_END_HOUR`.
-Khi AI lỗi, bot tự quay về parser luật.
+Thứ tự xử lý một note: **parser luật** (nhanh, có test) → nếu không thấy giờ và đã bật AI thì hỏi **AI** → vẫn không có giờ thì
+**tự xếp** vào khung trống sớm nhất trong `WORK_START_HOUR`–`WORK_END_HOUR`, cách việc khác ít nhất 30 phút. Phần tự xếp là code, không cần AI.
+
+AI là tuỳ chọn: điền `LLM_MODEL` (+ `LLM_API_KEY`) trong `.env`, dùng được mọi endpoint kiểu OpenAI.
+Đã thử `qwen2.5:3b` qua Ollama trên máy không có GPU: 3–7 giây mỗi câu và không nhận ra thêm cách nói nào so với luật, nên đang tắt.
+Model lớn hơn (qua API trả phí) sẽ đáng dùng hơn.
 
 ## Bridge Zalo
 
 ⚠️ Dùng [zca-js](https://github.com/RFS-ADRENO/zca-js), một thư viện **không chính thức**. Zalo có thể khoá tài khoản, nên dùng nick phụ.
 
 1. `ZALO_ENABLED=1` trong `.env`, khởi động lại.
-2. Bot gửi mã QR vào Telegram (đồng thời lưu ở `data/zalo-qr.png`). Quét bằng app Zalo.
+2. Gõ `/zalo` cho bot: bot gửi mã QR vào Telegram (đồng thời lưu ở `data/zalo-qr.png`). Quét bằng app Zalo.
+   Mã hết hạn 3 lần liên tiếp thì bot dừng, gõ `/zalo` lại khi sẵn sàng.
 3. Trên Zalo, nhắn `#note mai 9h gọi khách` ở bất kỳ đâu, ví dụ "Cloud của tôi". Việc sẽ xuất hiện trên Telegram.
 
 Phiên đăng nhập được lưu trong `data/zalo-credentials.json`. **Không commit file này.**
