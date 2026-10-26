@@ -3,9 +3,7 @@
 Ghi note nhanh qua Telegram (hoặc Zalo), bot nhắc đúng giờ và **nhắc lại tới khi bấm ✅ Xong**.
 
 ```
-Zalo "#note ..." ──┐
-                   ▼
-Telegram ───► parser (LLM hoặc luật) ───► SQLite ───► scheduler (30s/lần) ───► Telegram 🔔
+
 ```
 
 ## Chạy trong 5 phút
@@ -40,7 +38,28 @@ Gõ tin nhắn bình thường:
 Khi tới giờ, tin nhắc có các nút ✅ Xong · ⏰ +15p · ⏰ +1h · 🌙 Tối nay · 📅 Mai.
 Chưa bấm thì bot nhắc lại mỗi 15 phút, tối đa 6 lần. Mỗi sáng 7h bot gửi tóm tắt việc trong ngày kèm inbox.
 
-Lệnh: `/list`, `/today`, `/move 12 mai 10h`, `/done 12`, `/del 12`.
+### Bàn phím tiện ích (Menu Keyboard) & Lệnh
+Bot tích hợp bàn phím thường trực dưới khung chat:
+- **📋 Việc hôm nay**: xem danh sách việc cần làm trong ngày và thanh tiến độ (`[▓▓▓░░░░░░░] 30%`).
+- **📥 Hộp thư Inbox**: xem các việc chưa xếp giờ để lên lịch (`/move <id> <giờ>`).
+- **📊 Tiến độ**: thống kê tổng quan việc hoàn thành hôm nay và tổng việc tồn đọng.
+- **➕ Thêm việc**: hướng dẫn cú pháp ghi nhanh.
+
+Lệnh gõ tay: `/list`, `/today`, `/inbox`, `/stats`, `/move 12 mai 10h`, `/done 12`, `/del 12`.
+
+## Ghi note bằng giọng nói (Voice Note)
+
+Bạn có thể gửi **tin nhắn thoại (voice memo)** trực tiếp cho bot khi đang lái xe hoặc bận tay. Bot sẽ dùng Whisper STT để nhận diện tiếng Việt và tự động lên lịch nhắc việc.
+
+1. Lấy API key miễn phí hoặc giá rẻ từ [Groq](https://console.groq.com) (tốc độ < 1 giây) hoặc [OpenAI](https://platform.openai.com).
+2. Điền vào `.env`:
+   ```env
+   STT_BASE_URL=https://api.groq.com/openai/v1
+   STT_API_KEY=gsk_...
+   STT_MODEL=whisper-large-v3-turbo
+   STT_LANGUAGE=vi
+   ```
+3. Khởi động lại bot và gửi voice note bất kỳ vào chat!
 
 ## Cho người khác dùng (duyệt bởi host)
 
