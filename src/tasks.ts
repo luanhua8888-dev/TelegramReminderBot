@@ -5,6 +5,7 @@ import { config, llmEnabled } from "./config.ts";
 import type { Db, Task } from "./db.ts";
 import { llmParse } from "./llm.ts";
 import { parseVietnamese, type Parsed } from "./parser.ts";
+import { assertSafeContent } from "./security.ts";
 import { findFreeSlot } from "./slot.ts";
 import { DAY, formatLocal, fromLocal, startOfLocalDay, toLocal } from "./time.ts";
 
@@ -42,6 +43,7 @@ export function createTaskService(db: Db) {
 
   return {
     async add(chatId: number, input: string, source: string): Promise<AddResult> {
+      assertSafeContent(input);
       const { parsed, auto } = await parse(input, chatId, Date.now());
       const task = db.addTask(chatId, parsed.text, parsed.dueAt, parsed.recurring, source);
       return { task, auto };

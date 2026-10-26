@@ -7,6 +7,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { InputFile, type Api } from "grammy";
 import { config } from "./config.ts";
+import { SensitiveContentError } from "./security.ts";
 import { formatTask, taskKeyboard, type TaskService } from "./tasks.ts";
 
 const NOTE_PREFIX = /^\s*#(?:note|nhac|nhắc|todo)\s+([\s\S]+)/iu;
@@ -102,7 +103,11 @@ async function connect(tasks: TaskService, tg: Api, ownerChatId: number): Promis
         reply_markup: taskKeyboard(task.id),
       });
     } catch (err) {
-      console.error("[zalo] xử lý note lỗi:", err);
+      if (err instanceof SensitiveContentError) {
+        await tg.sendMessage(ownerChatId, `⚠️ <b>Note từ Zalo bị chặn:</b>\n${err.message}`, { parse_mode: "HTML" });
+      } else {
+        console.error("[zalo] xử lý note lỗi:", err);
+      }
     }
   });
   api.listener.on("error", (err) => console.error("[zalo] listener lỗi:", err));

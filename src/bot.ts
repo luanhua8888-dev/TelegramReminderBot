@@ -2,6 +2,7 @@ import { Bot, Keyboard, type Context } from "grammy";
 import { accessMiddleware, isHost, registerHostCommands } from "./access.ts";
 import { config, llmEnabled, sttEnabled } from "./config.ts";
 import type { Db } from "./db.ts";
+import { checkSensitiveContent } from "./security.ts";
 import { transcribeAudio } from "./stt.ts";
 import {
   formatTask,
@@ -88,6 +89,10 @@ export function createBot(db: Db, tasks: TaskService) {
 
   async function addNote(ctx: Context, text: string) {
     const chatId = ctx.chat!.id;
+    const check = checkSensitiveContent(text);
+    if (!check.safe) {
+      return ctx.reply(check.message);
+    }
     const blocked = overLimit(chatId);
     if (blocked) return ctx.reply(blocked);
     // Telegram tắt "đang nhập..." sau ~5 giây; AI local có thể mất 10–20 giây nên gửi lại liên tục
@@ -240,6 +245,10 @@ export function createBot(db: Db, tasks: TaskService) {
     }
 
     if (moveTaskId) {
+      const check = checkSensitiveContent(text);
+      if (!check.safe) {
+        return ctx.reply(check.message);
+      }
       const at = tasks.reschedule(moveTaskId, ctx.chat.id, text);
       if (at !== null) {
         awaitingMove.delete(ctx.chat.id);
@@ -298,6 +307,10 @@ export function createBot(db: Db, tasks: TaskService) {
 
       let moveTaskId = awaitingMove.get(ctx.chat.id);
       if (moveTaskId) {
+        const check = checkSensitiveContent(transcribed);
+        if (!check.safe) {
+          return ctx.reply(check.message);
+        }
         const at = tasks.reschedule(moveTaskId, ctx.chat.id, transcribed);
         await ctx.reply(`🎙 <i>"${escapeHtml(transcribed)}"</i>`, { parse_mode: "HTML" });
         if (at !== null) {
