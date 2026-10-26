@@ -2,6 +2,7 @@ import { Bot, Keyboard, type Context } from "grammy";
 import { accessMiddleware, isHost, registerHostCommands } from "./access.ts";
 import { config, llmEnabled, sttEnabled } from "./config.ts";
 import type { Db } from "./db.ts";
+import { fetchMuStatus, formatMuMessage, isMuQuery, muKeyboard } from "./mu.ts";
 import { checkSensitiveContent } from "./security.ts";
 import { transcribeAudio } from "./stt.ts";
 import {
@@ -35,6 +36,7 @@ Lệnh:
 /done 12 – đánh dấu xong #12 (hoặc /done #12)
 /move 12 mai 10h – dời giờ #12 (hoặc /move #12 mai 10h)
 /del 12 – xoá #12 (hoặc /del #12)
+/mu – tình trạng MU "Ra Hang" hay "Vô Hang"
 /id – xem chat id
 
 Đến giờ mà chưa bấm ✅ thì bot nhắc lại mỗi ${config.repeatEveryMin} phút (tối đa ${config.maxRepeats} lần).
@@ -218,6 +220,20 @@ export function createBot(db: Db, tasks: TaskService) {
     return ctx.reply(at === null ? "Không hiểu thời gian hoặc không tìm thấy việc." : `📅 #${id} → ${when(at)}`);
   });
 
+  async function handleMu(ctx: Context) {
+    try {
+      const status = await fetchMuStatus();
+      return ctx.reply(formatMuMessage(status), {
+        parse_mode: "HTML",
+        reply_markup: muKeyboard(status.nextMatch?.kickoffEpoch),
+      });
+    } catch {
+      return ctx.reply("⚽ Chưa lấy được dữ liệu Manchester United lúc này, bạn thử lại sau nhé!");
+    }
+  }
+
+  bot.command(["mu", "hang", "manutd"], handleMu);
+
   // Tin nhắn thường = ghi note mới hoặc tương tác menu. Trong nhóm chỉ nhận /add
   bot.on("message:text", async (ctx) => {
     if (ctx.chat.type !== "private") return;
@@ -253,6 +269,11 @@ export function createBot(db: Db, tasks: TaskService) {
       const r = tasks.complete(id, ctx.chat.id);
       if (!r) return ctx.reply(`Không tìm thấy việc #${id} đang chờ.`);
       return ctx.reply(doneMessage(r.task.text, r.nextDue), { parse_mode: "HTML" });
+    }
+
+    // Kiểm tra câu hỏi / nhắc về MU hoặc Ra hang / Vô hang
+    if (isMuQuery(text)) {
+      return handleMu(ctx);
     }
 
     // Kiểm tra nếu đang chờ nhập giờ mới để dời việc
@@ -391,6 +412,33 @@ export function createBot(db: Db, tasks: TaskService) {
     // Giữ nội dung lời nhắc gốc, thêm dòng trạng thái và bỏ nút
     const original = ctx.callbackQuery.message?.text ?? "";
     await ctx.editMessageText(`${escapeHtml(original)}\n\n${text}`, { parse_mode: "HTML" }).catch(() => ctx.reply(text, { parse_mode: "HTML" }));
+  });
+
+  bot.callbackQuery(/^mu:(refresh|remind)(?::(\d+))?$/, async (ctx) => {
+    const [, subAction, epochStr] = ctx.match;
+    if (subAction === "refresh") {
+      try {
+        const status = await fetchMuStatus(true);
+        await ctx.editMessageText(formatMuMessage(status), {
+          parse_mode: "HTML",
+          reply_markup: muKeyboard(status.nextMatch?.kickoffEpoch),
+        });
+        return ctx.answerCallbackQuery({ text: "Đã cập nhật tình hình Hang MU mới nhất!" });
+      } catch {
+        return ctx.answerCallbackQuery({ text: "Không thể làm mới lúc này." });
+      }
+    }
+    if (subAction === "remind" && epochStr) {
+      const epoch = Number(epochStr);
+      const remindTime = epoch - 15 * 60_000;
+      if (remindTime > Date.now()) {
+        db.addTask(ctx.chat!.id, "Xem trực tiếp Manchester United thi đấu ⚽🔥", remindTime, null, "telegram");
+        await ctx.answerCallbackQuery({ text: "⏰ Đã đặt lịch nhắc trước 15 phút khi MU đá!" });
+        return ctx.reply("⏰ Đã tạo nhắc nhở trước 15 phút giờ bóng lăn! Chuẩn bị sẵn sàng ra hang nhé!");
+      } else {
+        return ctx.answerCallbackQuery({ text: "Trận đấu đã diễn ra hoặc không còn hợp lệ." });
+      }
+    }
   });
 
   bot.catch((err) => console.error("[bot]", err.error));

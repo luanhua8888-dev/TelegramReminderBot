@@ -1,6 +1,7 @@
 import type { Api } from "grammy";
 import { config } from "./config.ts";
 import type { Db } from "./db.ts";
+import { fetchMuStatus, formatMuAlert, muKeyboard } from "./mu.ts";
 import { escapeHtml, formatReminder, formatTaskCard, reminderKeyboard } from "./tasks.ts";
 import { DAY, startOfLocalDay, toLocal, toLocalIso } from "./time.ts";
 
@@ -8,6 +9,7 @@ const TICK_MS = 30_000;
 
 export function startScheduler(db: Db, api: Api): () => void {
   let running = false;
+  let lastMuCheck = 0;
 
   async function tick() {
     if (running) return; // tick trước chưa xong (mạng chậm) thì bỏ qua
@@ -15,10 +17,41 @@ export function startScheduler(db: Db, api: Api): () => void {
     try {
       await sendDueReminders();
       await sendDailyDigest();
+      await checkMuMatchAlert();
     } catch (err) {
       console.error("[scheduler]", err);
     } finally {
       running = false;
+    }
+  }
+
+  async function checkMuMatchAlert() {
+    const now = Date.now();
+    // Kiểm tra định kỳ mỗi 10 phút một lần
+    if (now - lastMuCheck < 600_000) return;
+    lastMuCheck = now;
+
+    try {
+      const status = await fetchMuStatus();
+      if (!status.lastMatch) return;
+      const lastNotified = db.getMeta("mu_last_notified_match");
+      if (!lastNotified) {
+        // Lần đầu ghi nhớ trận gần nhất, không gửi tin báo trận cũ
+        db.setMeta("mu_last_notified_match", status.lastMatch.id);
+        return;
+      }
+      if (lastNotified !== status.lastMatch.id) {
+        db.setMeta("mu_last_notified_match", status.lastMatch.id);
+        const alertMsg = formatMuAlert(status);
+        for (const chatId of db.activeChats()) {
+          await api.sendMessage(chatId, alertMsg, {
+            parse_mode: "HTML",
+            reply_markup: muKeyboard(status.nextMatch?.kickoffEpoch),
+          }).catch(() => {});
+        }
+      }
+    } catch {
+      // Bỏ qua lỗi mạng từ API bóng đá
     }
   }
 
